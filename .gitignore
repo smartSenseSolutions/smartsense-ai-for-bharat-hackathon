@@ -41,6 +41,7 @@ node_modules/
 jspm_packages/
 .pnp
 .pnp.js
+.vite
 
 # Production / Builds
 dist/
