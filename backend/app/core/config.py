@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
 
+    SUPERUSER_EMAIL: str = "admin@example.com"
+    SUPERUSER_PASSWORD: str = "changeme"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

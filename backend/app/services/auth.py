@@ -11,9 +11,6 @@ from app.models.domain import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SUPERUSER_EMAIL = "ai4bharat@smartsensesolutions.com"
-SUPERUSER_PASSWORD = "0504@A!bhar@t"
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -49,12 +46,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def seed_superuser(db: Session) -> None:
     """Create the superuser if it does not already exist."""
-    if get_user_by_email(db, SUPERUSER_EMAIL):
+    if get_user_by_email(db, settings.SUPERUSER_EMAIL):
         return
     superuser = User(
         id=str(uuid.uuid4()),
-        email=SUPERUSER_EMAIL,
-        hashed_password=get_password_hash(SUPERUSER_PASSWORD),
+        email=settings.SUPERUSER_EMAIL,
+        hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
         is_superuser=True,
         is_active=True,
     )
