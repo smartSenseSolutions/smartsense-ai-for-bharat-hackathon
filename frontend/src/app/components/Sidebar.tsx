@@ -7,11 +7,17 @@ interface SidebarProps {
   onNavigate: (screen: Screen) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
-export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse, userEmail, onLogout }: SidebarProps) {
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [showExpandButton, setShowExpandButton] = useState(false);
+
+  const initials = userEmail ? userEmail.slice(0, 2).toUpperCase() : 'RK';
+  const displayEmail = userEmail ?? 'ramkrish@smartsense.com';
+  const displayName = userEmail ? userEmail.split('@')[0] : 'Ram Krish';
 
   const menuItems = [
     { id: 'dashboard' as Screen, label: 'Dashboard', icon: LayoutDashboard },
@@ -25,13 +31,13 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
   ];
 
   return (
-    <aside 
+    <aside
       className={`fixed left-4 top-4 bottom-4 bg-white flex flex-col z-50 rounded-2xl shadow-sm transition-all duration-300 group ${
         collapsed ? 'w-[72px]' : 'w-64'
       }`}
     >
       {/* Logo */}
-      <div 
+      <div
         className="h-16 flex items-center justify-center px-4 relative"
         onMouseEnter={() => collapsed && setShowExpandButton(true)}
         onMouseLeave={() => setShowExpandButton(false)}
@@ -70,10 +76,10 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
       <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-2' : 'px-3'}`}>
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.id === 'proposals-list' 
+          const isActive = item.id === 'proposals-list'
             ? (currentScreen === 'proposals-list' || currentScreen === 'proposal-details' || currentScreen === 'create-proposal' || currentScreen === 'project-name-entry' || currentScreen === 'ai-rfp-creator' || currentScreen === 'ai-rfp-creator-centered' || currentScreen === 'approval-pending')
             : currentScreen === item.id;
-          
+
           return (
             <button
               key={item.id}
@@ -97,7 +103,7 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
       {/* Bottom Section */}
       <div className={`space-y-2 relative ${collapsed ? 'p-2' : 'p-3'}`}>
         {/* User Profile Card */}
-        <button 
+        <button
           className={`w-full bg-gray-50 rounded-lg transition-all hover:bg-gray-100 ${
             collapsed ? 'p-2 flex justify-center' : 'p-3'
           }`}
@@ -105,26 +111,26 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
         >
           {collapsed ? (
             <div className="w-9 h-9 bg-[#3B82F6] rounded-full flex items-center justify-center">
-              <span className="text-white text-xs font-semibold">RK</span>
+              <span className="text-white text-xs font-semibold">{initials}</span>
             </div>
           ) : (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-[#3B82F6] rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-semibold">RK</span>
+                <span className="text-white text-xs font-semibold">{initials}</span>
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-semibold text-gray-900 truncate">Ram Krish</p>
-                <p className="text-xs text-gray-500 truncate">ramkrish@smartsense.com</p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{displayName}</p>
+                <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
               </div>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showLogoutPopup ? 'rotate-180' : ''}`} />
             </div>
           )}
         </button>
-        
+
         {/* User Profile Popup */}
         {showLogoutPopup && !collapsed && (
           <div className="absolute bottom-16 left-3 right-3 bg-white rounded-lg p-1.5 space-y-0.5 shadow-lg border border-gray-100">
-            <button 
+            <button
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
               onClick={() => {
                 setShowLogoutPopup(false);
@@ -133,7 +139,7 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
               <User className="w-4 h-4 flex-shrink-0" />
               <span>Profile</span>
             </button>
-            <button 
+            <button
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
               onClick={() => {
                 setShowLogoutPopup(false);
@@ -143,7 +149,7 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
               <Settings className="w-4 h-4 flex-shrink-0" />
               <span>Settings</span>
             </button>
-            <button 
+            <button
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
               onClick={() => {
                 setShowLogoutPopup(false);
@@ -152,10 +158,11 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
               <HelpCircle className="w-4 h-4 flex-shrink-0" />
               <span>Help</span>
             </button>
-            <button 
+            <button
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
               onClick={() => {
                 setShowLogoutPopup(false);
+                onLogout?.();
               }}
             >
               <LogOut className="w-4 h-4 flex-shrink-0" />

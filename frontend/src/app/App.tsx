@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Toaster } from 'sonner';
+import { Login } from '@/app/components/screens/Login';
 import { Bell, Globe, X, FileText, MessageSquare, TrendingUp, AlertCircle, CheckCircle, Clock, Users, Package } from 'lucide-react';
 import { Sidebar } from '@/app/components/Sidebar';
 import { Dashboard } from '@/app/components/screens/Dashboard';
@@ -26,7 +27,36 @@ export interface Project {
   createdAt: Date;
 }
 
+interface AuthUser {
+  id: string;
+  email: string;
+  is_superuser: boolean;
+  is_active: boolean;
+}
+
 export default function App() {
+  const [authToken, setAuthToken] = useState<string | null>(
+    () => localStorage.getItem('auth_token')
+  );
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
+    const stored = localStorage.getItem('auth_user');
+    return stored ? JSON.parse(stored) : null;
+  });
+
+  const handleLogin = (token: string, user: AuthUser) => {
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('auth_user', JSON.stringify(user));
+    setAuthToken(token);
+    setAuthUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    setAuthToken(null);
+    setAuthUser(null);
+  };
+
   const [currentScreen, setCurrentScreen] = useState<Screen>('dashboard');
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [currentRFP, setCurrentRFP] = useState<any>(null);
@@ -452,15 +482,26 @@ export default function App() {
     }
   };
 
+  if (!authToken) {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <Login onLogin={handleLogin} />
+      </>
+    );
+  }
+
   return (
     <>
       <Toaster position="top-right" richColors />
       <div className="flex h-screen bg-white">
-        <Sidebar 
+        <Sidebar
           currentScreen={currentScreen}
           onNavigate={setCurrentScreen}
           collapsed={currentScreen === 'ai-rfp-creator-centered' ? true : sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          userEmail={authUser?.email}
+          onLogout={handleLogout}
         />
         
         {/* Top Header Bar */}
