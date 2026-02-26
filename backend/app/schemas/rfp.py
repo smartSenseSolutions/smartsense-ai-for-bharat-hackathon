@@ -38,7 +38,17 @@ class RFPChatRequest(BaseModel):
     messages: List[ChatMessage]
 
 
+class RFPDataResponse(BaseModel):
+    productName: str
+    quantity: str
+    deliveryTimeline: str
+    budget: str
+    specifications: List[str]
+    qualityStandards: List[str]
+    rfpDeadline: str
+
+
 class RFPChatResponse(BaseModel):
     reply: str
     is_complete: bool
-    rfp_data: Optional[dict] = None
+    rfp_data: Optional[RFPDataResponse] = None
