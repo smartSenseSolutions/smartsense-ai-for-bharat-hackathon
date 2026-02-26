@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { Login } from '@/app/components/screens/Login';
 import { Bell, Globe, X, FileText, MessageSquare, TrendingUp, AlertCircle, CheckCircle, Clock, Users, Package } from 'lucide-react';
@@ -58,13 +58,25 @@ export default function App() {
     setAuthUser(null);
   };
 
-  const [currentScreen, setCurrentScreen] = useState<Screen>('dashboard');
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    return (localStorage.getItem('app_currentScreen') as Screen) || 'dashboard';
+  });
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [currentRFP, setCurrentRFP] = useState<any>(null);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [selectedProposal, setSelectedProposal] = useState<any>(null);
-  const [currentProjectName, setCurrentProjectName] = useState<string>('');
+  const [currentProjectName, setCurrentProjectName] = useState<string>(() => {
+    return localStorage.getItem('app_currentProjectName') || '';
+  });
   const [currentRFPData, setCurrentRFPData] = useState<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('app_currentScreen', currentScreen);
+  }, [currentScreen]);
+
+  useEffect(() => {
+    localStorage.setItem('app_currentProjectName', currentProjectName);
+  }, [currentProjectName]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -75,14 +87,14 @@ export default function App() {
     switch (currentScreen) {
       case 'dashboard':
         return (
-          <Dashboard 
+          <Dashboard
             onNavigate={setCurrentScreen}
             onSearchClick={() => setCurrentScreen('vendor-market')}
           />
         );
       case 'vendor-market':
         return (
-          <VendorMarket 
+          <VendorMarket
             onNavigate={setCurrentScreen}
             onVendorSelect={(vendor) => {
               setSelectedVendor(vendor);
@@ -130,7 +142,7 @@ export default function App() {
         );
       case 'create-proposal':
         return (
-          <RFPManager 
+          <RFPManager
             onNavigate={setCurrentScreen}
             selectedVendor={selectedVendor}
             onRFPSent={(rfp) => {
@@ -143,7 +155,7 @@ export default function App() {
         );
       case 'project-name-entry':
         return (
-          <ProjectNameEntry 
+          <ProjectNameEntry
             onBack={() => setCurrentScreen('proposals-list')}
             onNext={(projectName) => {
               setCurrentProjectName(projectName);
@@ -153,7 +165,7 @@ export default function App() {
         );
       case 'ai-rfp-creator':
         return (
-          <AIRFPCreator 
+          <AIRFPCreator
             projectName={currentProjectName}
             onBack={() => setCurrentScreen('project-name-entry')}
             onSendForApproval={(rfpData) => {
@@ -164,7 +176,7 @@ export default function App() {
         );
       case 'ai-rfp-creator-centered':
         return (
-          <AIRFPCreatorCentered 
+          <AIRFPCreatorCentered
             projectName={currentProjectName}
             onBack={() => {
               setCurrentScreen('proposals-list');
@@ -180,7 +192,7 @@ export default function App() {
                 rfpData: rfpData,
                 createdAt: new Date(),
               };
-              
+
               setProjects(prev => [newProject, ...prev]);
               setCurrentScreen('proposals-list');
               // Re-expand sidebar
@@ -190,7 +202,7 @@ export default function App() {
         );
       case 'approval-pending':
         return (
-          <ApprovalPending 
+          <ApprovalPending
             projectName={currentProjectName}
             onBackToProjects={() => setCurrentScreen('proposals-list')}
           />
@@ -206,7 +218,7 @@ export default function App() {
         return <NegotiationHub onNavigate={setCurrentScreen} selectedQuote={selectedQuote} />;
       case 'quote-intelligence':
         return (
-          <QuoteIntelligence 
+          <QuoteIntelligence
             onNavigate={setCurrentScreen}
             onVendorSelect={(quote) => {
               setSelectedQuote(quote);
@@ -216,7 +228,7 @@ export default function App() {
         );
       case 'negotiation-hub':
         return (
-          <NegotiationHub 
+          <NegotiationHub
             onNavigate={setCurrentScreen}
             selectedQuote={selectedQuote}
           />
@@ -506,10 +518,10 @@ export default function App() {
           userEmail={authUser?.email}
           onLogout={handleLogout}
         />
-        
+
         {/* Top Header Bar */}
         {currentScreen !== 'ai-rfp-creator' && currentScreen !== 'ai-rfp-creator-centered' && (
-          <div 
+          <div
             className={`fixed top-4 right-4 flex items-center gap-3 z-40 transition-all duration-300`}
           >
             {/* Language Selector */}
@@ -523,7 +535,7 @@ export default function App() {
               >
                 <Globe className="w-5 h-5 text-gray-600" />
               </button>
-              
+
               {showLanguageMenu && (
                 <div className="absolute top-12 right-0 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-1.5 z-50">
                   {['English', 'हिंदी', 'தமிழ்', 'తెలుగు', 'বাংলা', 'मराठी', 'ગુજરાતી', 'ಕನ್ನಡ'].map((lang) => (
@@ -533,9 +545,8 @@ export default function App() {
                         setCurrentLanguage(lang);
                         setShowLanguageMenu(false);
                       }}
-                      className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${
-                        currentLanguage === lang ? 'bg-blue-50 text-[#3B82F6] font-medium' : 'text-gray-700'
-                      }`}
+                      className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${currentLanguage === lang ? 'bg-blue-50 text-[#3B82F6] font-medium' : 'text-gray-700'
+                        }`}
                     >
                       {lang}
                     </button>
@@ -559,7 +570,7 @@ export default function App() {
             </div>
           </div>
         )}
-        
+
         {/* Notification Side Panel */}
         {showNotifications && (
           <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-end">
@@ -584,7 +595,7 @@ export default function App() {
                   {/* Today */}
                   <div className="px-6 py-4">
                     <p className="text-xs font-medium text-gray-400 mb-3">TODAY</p>
-                    
+
                     {/* Quotation Received */}
                     <div className="py-3 cursor-pointer hover:bg-gray-50 -mx-6 px-6 transition-colors border-l-2 border-transparent hover:border-[#3B82F6]">
                       <div className="flex items-start gap-3">
@@ -659,7 +670,7 @@ export default function App() {
                   {/* Yesterday */}
                   <div className="px-6 py-4">
                     <p className="text-xs font-medium text-gray-400 mb-3">YESTERDAY</p>
-                    
+
                     {/* Order Confirmed */}
                     <div className="py-3 cursor-pointer hover:bg-gray-50 -mx-6 px-6 transition-colors border-l-2 border-transparent hover:border-green-500">
                       <div className="flex items-start gap-3">
@@ -720,7 +731,7 @@ export default function App() {
                   {/* Earlier */}
                   <div className="px-6 py-4">
                     <p className="text-xs font-medium text-gray-400 mb-3">EARLIER</p>
-                    
+
                     {/* New Vendor Connected */}
                     <div className="py-3 cursor-pointer hover:bg-gray-50 -mx-6 px-6 transition-colors border-l-2 border-transparent hover:border-green-500">
                       <div className="flex items-start gap-3">
@@ -845,21 +856,19 @@ export default function App() {
             </div>
           </div>
         )}
-        
-        <main 
-          className={`flex-1 h-screen overflow-hidden transition-all duration-300 ${
-            currentScreen === 'ai-rfp-creator' 
-              ? '' 
-              : currentScreen === 'ai-rfp-creator-centered'
-                ? 'ml-[88px]'
-                : sidebarCollapsed 
-                  ? 'ml-[88px] p-4' 
-                  : 'ml-72 p-4'
-          }`}
+
+        <main
+          className={`flex-1 h-screen overflow-hidden transition-all duration-300 ${currentScreen === 'ai-rfp-creator'
+            ? ''
+            : currentScreen === 'ai-rfp-creator-centered'
+              ? 'ml-[88px]'
+              : sidebarCollapsed
+                ? 'ml-[88px] p-4'
+                : 'ml-72 p-4'
+            }`}
         >
-          <div className={`h-full ${
-            currentScreen === 'ai-rfp-creator' || currentScreen === 'ai-rfp-creator-centered' ? '' : 'max-w-[980px] mx-auto'
-          }`}>
+          <div className={`h-full ${currentScreen === 'ai-rfp-creator' || currentScreen === 'ai-rfp-creator-centered' ? '' : 'max-w-[980px] mx-auto'
+            }`}>
             {renderScreen()}
           </div>
         </main>

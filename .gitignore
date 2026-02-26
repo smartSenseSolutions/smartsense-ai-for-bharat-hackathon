@@ -98,3 +98,6 @@ Thumbs.db
 .gemini/
 
 CLAUDE.md
+
+# Package Manager Lock Files
+package-lock.json
