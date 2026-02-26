@@ -1,0 +1,100 @@
+# =========================
+# Python
+# =========================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type Checking
+.mypy_cache/
+
+# Data Science / Jupyter
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# =========================
+# React / Node.js
+# =========================
+# Dependencies
+node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+
+# Vite cache
+.vite/
+
+# Production / Builds
+dist/
+build/
+out/
+.next/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Caches
+.eslintcache
+.parcel-cache/
+
+# =========================
+# Python Lock Files
+# =========================
+uv.lock
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =========================
+# IDEs and OS
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# =========================
+# Claude & AI Tools
+# =========================
+.claude/
+.claude.json
+.antigravity/
+.gemini/
+
+CLAUDE.md
