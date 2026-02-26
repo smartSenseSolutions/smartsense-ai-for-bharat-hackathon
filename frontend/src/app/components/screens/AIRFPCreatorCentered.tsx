@@ -84,6 +84,8 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
     }
   }, [rfpGenerated]);
 
+  const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isGenerating) return;
 
@@ -94,12 +96,49 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInputValue('');
     setIsGenerating(true);
 
-    // Simulate AI processing
-    setTimeout(() => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE}/api/rfp/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          project_name: projectName,
+          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.reply,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      if (data.is_complete && data.rfp_data) {
+        setRfpData(data.rfp_data);
+        setRfpGenerated(true);
+        setCollectedInfo({
+          product: data.rfp_data.productName ?? '',
+          quantity: data.rfp_data.quantity ?? '',
+          deliveryTimeline: data.rfp_data.deliveryTimeline ?? '',
+          budget: data.rfp_data.budget ?? '',
+        });
+      }
+    } catch (err) {
+      // Fallback to local pattern-matching when the backend is unreachable
       const aiResponse = generateAIResponse(inputValue);
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -107,16 +146,14 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
         content: aiResponse.message,
         timestamp: new Date(),
       };
-
       setMessages(prev => [...prev, assistantMessage]);
-      
       if (aiResponse.rfpData) {
         setRfpData(aiResponse.rfpData);
         setRfpGenerated(true);
       }
-      
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
   const generateAIResponse = (userInput: string) => {
@@ -253,8 +290,9 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
           {/* Back Button in Chat Header */}
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-gray-400" />
+              <Sparkles className="w-4 h-4 text-blue-500" />
               <h2 className="text-sm font-semibold text-gray-900">RFP AI Agent</h2>
+              <span className="ml-auto text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Nova Lite</span>
             </div>
             <p className="text-xs text-gray-500 mt-1">Describe your RFP requirements</p>
           </div>

@@ -21,3 +21,24 @@ class RFPDistributeRequest(BaseModel):
     project_id: str
     vendor_ids: List[str]
     rfp_data: dict
+
+
+# ---------------------------------------------------------------------------
+# Conversational RFP chat (Nova Lite)
+# ---------------------------------------------------------------------------
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class RFPChatRequest(BaseModel):
+    project_name: str
+    messages: List[ChatMessage]
+
+
+class RFPChatResponse(BaseModel):
+    reply: str
+    is_complete: bool
+    rfp_data: Optional[dict] = None

@@ -16,8 +16,9 @@ import { ProjectNameEntry } from '@/app/components/screens/ProjectNameEntry';
 import { AIRFPCreator } from '@/app/components/screens/AIRFPCreator';
 import { AIRFPCreatorCentered } from '@/app/components/screens/AIRFPCreatorCentered';
 import { ApprovalPending } from '@/app/components/screens/ApprovalPending';
+import { VendorOnboarding } from '@/app/components/screens/VendorOnboarding';
 
-export type Screen = 'dashboard' | 'vendor-market' | 'proposals-list' | 'proposal-details' | 'create-proposal' | 'project-name-entry' | 'ai-rfp-creator' | 'ai-rfp-creator-centered' | 'approval-pending' | 'communication-hub' | 'quote-intelligence' | 'negotiation-hub' | 'orders-history' | 'settings' | 'quotations' | 'negotiations';
+export type Screen = 'dashboard' | 'vendor-market' | 'vendor-onboarding' | 'proposals-list' | 'proposal-details' | 'create-proposal' | 'project-name-entry' | 'ai-rfp-creator' | 'ai-rfp-creator-centered' | 'approval-pending' | 'communication-hub' | 'quote-intelligence' | 'negotiation-hub' | 'orders-history' | 'settings' | 'quotations' | 'negotiations';
 
 export interface Project {
   id: string;
@@ -222,6 +223,8 @@ export default function App() {
         );
       case 'orders-history':
         return <OrdersHistory onNavigate={setCurrentScreen} />;
+      case 'vendor-onboarding':
+        return <VendorOnboarding onNavigate={setCurrentScreen} />;
       case 'settings':
         return (
           <div className="min-h-screen">

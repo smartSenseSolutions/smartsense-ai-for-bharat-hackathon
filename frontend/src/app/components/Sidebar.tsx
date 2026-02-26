@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, Globe, MessageSquare, Package, Settings, LogOut, ChevronDown, ChevronRight, PanelLeftClose, DollarSign, Phone, User, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, FileText, Globe, Package, Settings, LogOut, ChevronDown, ChevronRight, PanelLeftClose, User, HelpCircle, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import type { Screen } from '@/app/App';
 
@@ -23,18 +23,16 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
     { id: 'dashboard' as Screen, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'proposals-list' as Screen, label: 'Procurements', icon: FileText },
     { id: 'vendor-market' as Screen, label: 'Marketplace', icon: Globe },
-    { id: 'communication-hub' as Screen, label: 'Communications', icon: MessageSquare },
-    { id: 'quotations' as Screen, label: 'Quotations', icon: DollarSign },
-    { id: 'negotiations' as Screen, label: 'Negotiations', icon: Phone },
+    { id: 'vendor-onboarding' as Screen, label: 'Vendor Onboarding', icon: UserPlus },
+
     { id: 'orders-history' as Screen, label: 'Closures', icon: Package },
     { id: 'settings' as Screen, label: 'Settings', icon: Settings },
   ];
 
   return (
     <aside
-      className={`fixed left-4 top-4 bottom-4 bg-white flex flex-col z-50 rounded-2xl shadow-sm transition-all duration-300 group ${
-        collapsed ? 'w-[72px]' : 'w-64'
-      }`}
+      className={`fixed left-4 top-4 bottom-4 bg-white flex flex-col z-50 rounded-2xl shadow-sm transition-all duration-300 group ${collapsed ? 'w-[72px]' : 'w-64'
+        }`}
     >
       {/* Logo */}
       <div
@@ -84,13 +82,11 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center rounded-lg text-sm font-medium transition-all ${
-                collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
-              } ${
-                isActive
+              className={`w-full flex items-center rounded-lg text-sm font-medium transition-all ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+                } ${isActive
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-gray-600 hover:bg-[#f5f5f5] hover:text-gray-900'
-              }`}
+                }`}
               title={collapsed ? item.label : undefined}
             >
               <Icon className="w-4.5 h-4.5 flex-shrink-0" />
@@ -104,9 +100,8 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
       <div className={`space-y-2 relative ${collapsed ? 'p-2' : 'p-3'}`}>
         {/* User Profile Card */}
         <button
-          className={`w-full bg-gray-50 rounded-lg transition-all hover:bg-gray-100 ${
-            collapsed ? 'p-2 flex justify-center' : 'p-3'
-          }`}
+          className={`w-full bg-gray-50 rounded-lg transition-all hover:bg-gray-100 ${collapsed ? 'p-2 flex justify-center' : 'p-3'
+            }`}
           onClick={() => setShowLogoutPopup(!showLogoutPopup)}
         >
           {collapsed ? (

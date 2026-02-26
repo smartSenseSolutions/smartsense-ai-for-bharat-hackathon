@@ -1,4 +1,5 @@
 import json
+from app.core.config import settings
 from app.services.rfp import get_bedrock_client
 
 
@@ -30,7 +31,7 @@ async def score_quotes(quotes: list) -> list:
 
     try:
         response = bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            modelId=settings.BEDROCK_MODEL_ID,
             body=body,
             contentType="application/json",
             accept="application/json",
@@ -75,7 +76,7 @@ async def generate_negotiation_email(
 
     try:
         response = bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            modelId=settings.BEDROCK_MODEL_ID,
             body=body,
             contentType="application/json",
             accept="application/json",

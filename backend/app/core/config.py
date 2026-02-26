@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     )
 
     OPENSEARCH_URL: Optional[str] = None
+    OPENSEARCH_INDEX: str = "vendor-documents"
+
+    S3_BUCKET_NAME: Optional[str] = None
+
+    # Bedrock model IDs
+    BEDROCK_MODEL_ID: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    BEDROCK_NOVA_MODEL_ID: str = "amazon.nova-lite-v1:0"
+    BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
 
     JWT_SECRET_KEY: str = "change-this-secret-in-production"
     JWT_ALGORITHM: str = "HS256"

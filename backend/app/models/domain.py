@@ -71,8 +71,17 @@ class Vendor(Base):
     certification_status = Column(String, nullable=True)  # verified, pending, invalid
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Bulk-upload / onboarding fields
+    location = Column(String, nullable=True)  # City/state
+    estd = Column(Integer, nullable=True)  # Year established
+    mobile = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    certificates = Column(JSON, nullable=True)  # List[str] of cert/license names
+    products = Column(JSON, nullable=True)  # List[str] of product names
+
     rfps = relationship("RFP", back_populates="vendor")
     quotes = relationship("Quote", back_populates="vendor")
+    documents = relationship("VendorDocument", back_populates="vendor")
 
 
 class Quote(Base):
@@ -92,3 +101,23 @@ class Quote(Base):
 
     project = relationship("Project", back_populates="quotes")
     vendor = relationship("Vendor", back_populates="quotes")
+
+
+class VendorDocument(Base):
+    __tablename__ = "vendor_documents"
+
+    id = Column(String, primary_key=True, index=True)
+    vendor_id = Column(String, ForeignKey("vendors.id"), nullable=False, index=True)
+    document_url = Column(String, nullable=False)
+    document_name = Column(String, nullable=True)
+    issued_to = Column(String, nullable=True)
+    issuing_authority = Column(String, nullable=True)
+    issue_date = Column(String, nullable=True)
+    expiry_date = Column(String, nullable=True)
+    document_summary = Column(Text, nullable=True)
+    document_type = Column(String, nullable=True)
+    processing_status = Column(String, default="pending")  # pending, completed, failed
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    vendor = relationship("Vendor", back_populates="documents")

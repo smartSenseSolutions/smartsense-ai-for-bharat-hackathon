@@ -5,8 +5,10 @@ from app.schemas.rfp import (
     RFPGenerateRequest,
     RFPGenerateResponse,
     RFPDistributeRequest,
+    RFPChatRequest,
+    RFPChatResponse,
 )
-from app.services.rfp import generate_rfp_draft
+from app.services.rfp import generate_rfp_draft, chat_rfp_assistant
 
 router = APIRouter(prefix="/api/rfp", tags=["RFP Management"])
 
@@ -23,6 +25,22 @@ async def generate_rfp(request: RFPGenerateRequest):
     )
 
     return RFPGenerateResponse(**draft)
+
+
+@router.post("/chat", response_model=RFPChatResponse)
+async def rfp_chat(request: RFPChatRequest):
+    """
+    Conversational RFP creation powered by Amazon Nova Lite.
+
+    Send the full message history on every turn. The AI collects:
+    product, quantity, delivery timeline, and budget — then returns a
+    complete rfp_data object with is_complete=true.
+    """
+    result = await chat_rfp_assistant(
+        project_name=request.project_name,
+        messages=[m.model_dump() for m in request.messages],
+    )
+    return result
 
 
 @router.post("/distribute")

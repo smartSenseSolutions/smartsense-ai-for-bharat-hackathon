@@ -105,12 +105,9 @@ npm run build
 
 ---
 
-## Default credentials
+## Credentials
 
-| Field    | Value                              |
-|----------|------------------------------------|
-| Email    | `ai4bharat@smartsensesolutions.com` |
-| Password | `0504@A!bhar@t`                    |
+Will be shared separately to authorized people
 
 ---
 

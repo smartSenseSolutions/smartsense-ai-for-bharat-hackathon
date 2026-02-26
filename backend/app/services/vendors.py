@@ -1,5 +1,10 @@
 import boto3
+import csv
+import io
+import uuid
+from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.models.domain import Vendor, VendorDocument
 from app.services.rfp import get_bedrock_client
 import json
 
@@ -30,11 +35,11 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
         prompt = f"""
         Analyze the following extracted text from a vendor certification document.
         Target Certification Type expected: {cert_type}
-        
+
         Extracted Text:
         {extracted_text}
-        
-        Is this document a valid {cert_type} certification? Does it appear to be expired? 
+
+        Is this document a valid {cert_type} certification? Does it appear to be expired?
         Return strictly a JSON object: {{"is_valid": true/false, "expiration_date": "YYYY-MM-DD or null", "reason": "short explanation"}}
         """
 
@@ -47,7 +52,7 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
         )
 
         br_response = bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            modelId=settings.BEDROCK_MODEL_ID,
             body=body,
             contentType="application/json",
             accept="application/json",
@@ -66,3 +71,142 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
             "expiration_date": None,
             "reason": "Error processing document.",
         }
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk upload helpers
+# ---------------------------------------------------------------------------
+
+CSV_HEADERS = [
+    "vendor_name",
+    "location",
+    "estd",
+    "mobile",
+    "email",
+    "certificates",
+    "products",
+    "website",
+    "document_links",
+]
+
+
+def get_csv_template() -> str:
+    """Return a CSV template string with headers and one example row."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(CSV_HEADERS)
+    writer.writerow(
+        [
+            "Acme Supplies Pvt Ltd",
+            "Mumbai, Maharashtra",
+            "2005",
+            "+919876543210",
+            "procurement@acme.com",
+            "ISO 9001;BIS;FSSAI",  # semicolon-separated
+            "Steel Rods;Bolts;Nuts",  # semicolon-separated
+            "https://www.acme.com",
+            "https://s3.amazonaws.com/bucket/iso9001.pdf;https://s3.amazonaws.com/bucket/fssai.pdf",  # semicolon-separated S3 URLs
+        ]
+    )
+    return output.getvalue()
+
+
+def _split_field(value: str) -> list[str]:
+    """Split a semicolon-separated field; strip whitespace; drop empties."""
+    return [item.strip() for item in value.split(";") if item.strip()]
+
+
+def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
+    """
+    Parse CSV bytes and bulk-insert Vendor rows.
+
+    CSV columns (in any order, matched by header name):
+        vendor_name, location, estd, mobile, email,
+        certificates, products, website, document_links
+
+    Multi-value fields (certificates, products, document_links) use
+    semicolons as separator.
+    Returns a summary dict: {total, created, failed, documents_queued, errors}.
+    """
+    text = csv_bytes.decode("utf-8-sig")  # strip BOM if present
+    reader = csv.DictReader(io.StringIO(text))
+
+    rows = list(reader)
+    created = 0
+    failed = 0
+    documents_queued = 0
+    errors: list[dict] = []
+
+    for i, row in enumerate(rows, start=1):
+        try:
+            name = (row.get("vendor_name") or "").strip()
+            if not name:
+                raise ValueError("vendor_name is required")
+
+            estd_raw = (row.get("estd") or "").strip()
+            estd = int(estd_raw) if estd_raw else None
+
+            certs_raw = (row.get("certificates") or "").strip()
+            certs = _split_field(certs_raw) if certs_raw else []
+
+            products_raw = (row.get("products") or "").strip()
+            products = _split_field(products_raw) if products_raw else []
+
+            vendor_id = str(uuid.uuid4())
+            vendor = Vendor(
+                id=vendor_id,
+                name=name,
+                location=(row.get("location") or "").strip() or None,
+                estd=estd,
+                mobile=(row.get("mobile") or "").strip() or None,
+                contact_email=(row.get("email") or "").strip() or None,
+                certificates=certs or None,
+                products=products or None,
+                website=(row.get("website") or "").strip() or None,
+            )
+            db.add(vendor)
+            db.flush()
+            created += 1
+
+            # Parse document_links and create VendorDocument rows
+            doc_links_raw = (row.get("document_links") or "").strip()
+            if doc_links_raw:
+                doc_links = _split_field(doc_links_raw)
+                for link in doc_links:
+                    doc = VendorDocument(
+                        id=str(uuid.uuid4()),
+                        vendor_id=vendor_id,
+                        document_url=link,
+                        processing_status="pending",
+                    )
+                    db.add(doc)
+                    documents_queued += 1
+
+        except Exception as exc:
+            failed += 1
+            errors.append({"row": i, "error": str(exc)})
+
+    db.commit()
+    return {
+        "total": len(rows),
+        "created": created,
+        "failed": failed,
+        "documents_queued": documents_queued,
+        "errors": errors,
+    }
+
+
+def create_vendor(db: Session, data: dict) -> Vendor:
+    vendor = Vendor(id=str(uuid.uuid4()), **data)
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+
+def list_vendors(db: Session, skip: int = 0, limit: int = 100) -> list[Vendor]:
+    return db.query(Vendor).offset(skip).limit(limit).all()
+
+
+def get_vendor(db: Session, vendor_id: str) -> Vendor | None:
+    return db.query(Vendor).filter(Vendor.id == vendor_id).first()

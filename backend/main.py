@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.api.routers import search, rfp, quotes, vendors, translation, auth
+from app.api.routers import search, rfp, quotes, vendors, translation, auth, documents
 from app.core.database import SessionLocal
 from app.services.auth import seed_superuser
+from app.services.documents import ensure_opensearch_index
 
 
 @asynccontextmanager
@@ -14,6 +15,8 @@ async def lifespan(app: FastAPI):
         seed_superuser(db)
     finally:
         db.close()
+    # Ensure the OpenSearch vector index exists
+    ensure_opensearch_index()
     yield
     # Shutdown actions
 
@@ -40,6 +43,7 @@ app.include_router(rfp.router)
 app.include_router(quotes.router)
 app.include_router(vendors.router)
 app.include_router(translation.router)
+app.include_router(documents.router)
 
 
 @app.get("/")
