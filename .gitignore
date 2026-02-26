@@ -42,7 +42,9 @@ node_modules/
 jspm_packages/
 .pnp
 .pnp.js
-.vite
+
+# Vite cache
+.vite/
 
 # Production / Builds
 dist/
@@ -62,6 +64,11 @@ coverage/
 # Caches
 .eslintcache
 .parcel-cache/
+
+# =========================
+# Python Lock Files
+# =========================
+uv.lock
 
 # =========================
 # Environment Variables
@@ -85,8 +92,9 @@ Thumbs.db
 # =========================
 # Claude & AI Tools
 # =========================
-# Ignore Claude execution and config folders
 .claude/
 .claude.json
+.antigravity/
+.gemini/
 
 CLAUDE.md
