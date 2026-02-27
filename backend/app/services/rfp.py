@@ -176,9 +176,53 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-def generate_rfp_pdf(project_name: str, rfp_data: dict) -> bytes:
+def _logo_page_callback(logo_url: str):
+    """
+    Returns a ReportLab onPage callback that draws the company logo in the
+    top-right corner of every page.  Returns None if the image cannot be fetched.
+    """
+    from urllib.request import urlopen
+    from reportlab.lib.utils import ImageReader
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+
+    try:
+        with urlopen(logo_url, timeout=5) as resp:
+            img_data = BytesIO(resp.read())
+        img_reader = ImageReader(img_data)
+    except Exception as exc:
+        print(f"[RFP PDF] Could not fetch company logo ({logo_url}): {exc}")
+        return None
+
+    page_width, page_height = A4
+    logo_max_w = 3.5 * cm
+    logo_max_h = 1.5 * cm
+    margin = 2.5 * cm
+
+    def _draw(canvas, doc):
+        canvas.saveState()
+        # Place logo flush to the top-right, within the top margin area
+        canvas.drawImage(
+            img_reader,
+            x=page_width - margin - logo_max_w,
+            y=page_height - margin + 0.3 * cm,
+            width=logo_max_w,
+            height=logo_max_h,
+            mask="auto",
+            preserveAspectRatio=True,
+        )
+        canvas.restoreState()
+
+    return _draw
+
+
+def generate_rfp_pdf(
+    project_name: str, rfp_data: dict, company_logo_url: str | None = None
+) -> bytes:
     """
     Build a professional A4 PDF of the RFP using reportlab.
+    If *company_logo_url* is provided the logo is drawn in the top-right
+    corner of every page as a brand watermark.
     Returns raw PDF bytes.
     """
     from reportlab.lib.pagesizes import A4
@@ -388,11 +432,21 @@ def generate_rfp_pdf(project_name: str, rfp_data: dict) -> bytes:
         footer_sty,
     ))
 
-    doc.build(story)
+    logo_cb = _logo_page_callback(company_logo_url) if company_logo_url else None
+    doc.build(
+        story,
+        onFirstPage=logo_cb,
+        onLaterPages=logo_cb,
+    )
     return buffer.getvalue()
 
 
-def publish_rfp_to_s3(project_id: str, project_name: str, rfp_data: dict) -> dict:
+def publish_rfp_to_s3(
+    project_id: str,
+    project_name: str,
+    rfp_data: dict,
+    company_logo_url: str | None = None,
+) -> dict:
     """
     Generate a PDF for the RFP and upload it to S3.
     File key: {project_id}.pdf
@@ -406,7 +460,7 @@ def publish_rfp_to_s3(project_id: str, project_name: str, rfp_data: dict) -> dic
     # Use the bucket-specific region if set, otherwise fall back to the global AWS region
     region = settings.S3_RFP_BUCKET_REGION or settings.AWS_REGION
 
-    pdf_bytes = generate_rfp_pdf(project_name, rfp_data)
+    pdf_bytes = generate_rfp_pdf(project_name, rfp_data, company_logo_url=company_logo_url)
     s3_key = f"{project_id}.pdf"
 
     s3 = boto3.client(

@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import jwt
+from fastapi import HTTPException, status
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -42,6 +43,35 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(
         to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
     )
+
+
+def get_current_user(token: str, db: Session) -> User:
+    """Decode a JWT bearer token and return the corresponding User."""
+    try:
+        payload = jwt.decode(
+            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
+        user_id: Optional[str] = payload.get("sub")
+        if not user_id:
+            raise JWTError("Missing subject")
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+def update_user(db: Session, user: User, **fields) -> User:
+    """Apply arbitrary field updates to a User and commit."""
+    for key, value in fields.items():
+        setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def seed_superuser(db: Session) -> None:
