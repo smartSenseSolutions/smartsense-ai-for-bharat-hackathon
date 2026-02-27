@@ -1,7 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.api.routers import search, rfp, quotes, vendors, translation, auth, documents
+from app.api.routers import (
+    search,
+    rfp,
+    quotes,
+    vendors,
+    translation,
+    auth,
+    documents,
+    projects,
+    email,
+)
 from app.core.database import SessionLocal
 from app.services.auth import seed_superuser
 from app.services.documents import ensure_opensearch_index
@@ -44,6 +54,8 @@ app.include_router(quotes.router)
 app.include_router(vendors.router)
 app.include_router(translation.router)
 app.include_router(documents.router)
+app.include_router(projects.router)
+app.include_router(email.router)
 
 
 @app.get("/")

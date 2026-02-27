@@ -14,7 +14,6 @@ import traceback
 import boto3
 import httpx
 from opensearchpy import OpenSearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -35,34 +34,29 @@ def _get_bedrock_client():
 
 
 def _get_opensearch_client() -> OpenSearch:
-    """Return an OpenSearch client authenticated via AWS SigV4."""
+    """
+    Return an OpenSearch client using HTTP basic auth (username + password).
+
+    The OPENSEARCH_URL may point to the Dashboards UI
+    (e.g. https://…/\_dashboards) — the /_dashboards suffix is stripped
+    automatically so we always connect to the API root.
+    """
     if not settings.OPENSEARCH_URL:
         raise ValueError("OPENSEARCH_URL is not configured")
+    if not settings.OPENSEARCH_USER or not settings.OPENSEARCH_PASSWORD:
+        raise ValueError("OPENSEARCH_USER and OPENSEARCH_PASSWORD must be configured")
 
-    credentials = boto3.Session(
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    ).get_credentials()
+    # Strip the Dashboards suffix and any trailing slash to get the API endpoint
+    api_url = re.sub(r"/_dashboards.*$", "", settings.OPENSEARCH_URL).rstrip("/")
 
-    awsauth = AWS4Auth(
-        settings.AWS_ACCESS_KEY_ID,
-        settings.AWS_SECRET_ACCESS_KEY,
-        settings.AWS_REGION,
-        "aoss",  # OpenSearch Serverless service name
-        session_token=credentials.token if credentials.token else None,
-    )
-
-    # Strip protocol for the host parameter
-    host = (
-        settings.OPENSEARCH_URL.replace("https://", "")
-        .replace("http://", "")
-        .rstrip("/")
-    )
+    # Separate host from protocol
+    host = api_url.replace("https://", "").replace("http://", "")
+    use_ssl = api_url.startswith("https://")
 
     return OpenSearch(
         hosts=[{"host": host, "port": 443}],
-        http_auth=awsauth,
-        use_ssl=True,
+        http_auth=(settings.OPENSEARCH_USER, settings.OPENSEARCH_PASSWORD),
+        use_ssl=use_ssl,
         verify_certs=True,
         connection_class=RequestsHttpConnection,
         timeout=30,
@@ -74,10 +68,11 @@ def _get_opensearch_client() -> OpenSearch:
 # ---------------------------------------------------------------------------
 
 INDEX_NAME = settings.OPENSEARCH_INDEX
+VENDOR_INDEX_NAME = settings.VENDOR_INDEX_NAME
 
 
 def ensure_opensearch_index():
-    """Create the vendor-documents index with kNN mapping if it doesn't exist."""
+    """Create the vendor-documents index and vendors index with kNN mapping if they don't exist."""
     try:
         client = _get_opensearch_client()
 
@@ -109,7 +104,7 @@ def ensure_opensearch_index():
                             "method": {
                                 "name": "hnsw",
                                 "space_type": "cosinesimil",
-                                "engine": "nmslib",
+                                "engine": "faiss",
                             },
                         },
                     }
@@ -119,6 +114,42 @@ def ensure_opensearch_index():
             print(f"✓ Created OpenSearch index: {INDEX_NAME}")
         else:
             print(f"✓ OpenSearch index already exists: {INDEX_NAME}")
+
+        if not client.indices.exists(index=VENDOR_INDEX_NAME):
+            vendor_mapping = {
+                "settings": {
+                    "index": {
+                        "knn": True,
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "vendor_id": {"type": "keyword"},
+                        "vendor_name": {"type": "text"},
+                        "location": {"type": "text"},
+                        "estd": {"type": "integer"},
+                        "mobile": {"type": "text"},
+                        "contact_email": {"type": "keyword"},
+                        "website": {"type": "keyword"},
+                        "products": {"type": "text"},
+                        "certificates": {"type": "text"},
+                        "embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1024,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "faiss",
+                            },
+                        },
+                    }
+                },
+            }
+            client.indices.create(index=VENDOR_INDEX_NAME, body=vendor_mapping)
+            print(f"✓ Created OpenSearch index: {VENDOR_INDEX_NAME}")
+        else:
+            print(f"✓ OpenSearch index already exists: {VENDOR_INDEX_NAME}")
+
     except Exception as e:
         print(f"⚠ Could not ensure OpenSearch index: {e}")
 
@@ -305,12 +336,20 @@ async def process_vendor_document(doc_id: str, db: Session) -> bool:
         return False
 
     try:
-        # 1. Download the document
-        doc_bytes = await download_document(doc.document_url)
-        filename = _guess_filename(doc.document_url)
+        vendor = db.query(Vendor).filter(Vendor.id == doc.vendor_id).first()
 
-        # 2. Extract + summarize via Nova Lite
-        summary = await extract_and_summarize(doc_bytes, filename)
+        try:
+            # 1. Download the document
+            doc_bytes = await download_document(doc.document_url)
+            filename = _guess_filename(doc.document_url)
+
+            # 2. Extract + summarize via Nova Lite
+            summary = await extract_and_summarize(doc_bytes, filename)
+            doc.error_message = None
+        except Exception as e:
+            print(f"  ⚠ Could not download/summarize {doc.document_url}: {e}")
+            summary = {}
+            doc.error_message = f"Warning, partial index: {e}"
 
         # 3. Update DB record
         doc.document_name = summary.get("document_name")
@@ -321,11 +360,19 @@ async def process_vendor_document(doc_id: str, db: Session) -> bool:
         doc.document_summary = summary.get("document_summary")
         doc.document_type = summary.get("document_type", "Others")
         doc.processing_status = "completed"
-        doc.error_message = None
         db.flush()
 
-        # 4. Generate embedding from the summary text
+        # 4. Generate embedding from the summary text and vendor metadata
+        products_str = ", ".join(vendor.products) if vendor and vendor.products else ""
+        certs_str = (
+            ", ".join(vendor.certificates) if vendor and vendor.certificates else ""
+        )
+
         embed_text = (
+            f"Vendor: {vendor.name if vendor else ''}\n"
+            f"Location: {vendor.location if vendor else ''}\n"
+            f"Products: {products_str}\n"
+            f"Certificates: {certs_str}\n"
             f"Document: {doc.document_name or ''}\n"
             f"Type: {doc.document_type or ''}\n"
             f"Issued to: {doc.issued_to or ''}\n"
@@ -335,10 +382,12 @@ async def process_vendor_document(doc_id: str, db: Session) -> bool:
         embedding = generate_embedding(embed_text)
 
         # 5. Index to OpenSearch
-        vendor = db.query(Vendor).filter(Vendor.id == doc.vendor_id).first()
         metadata = {
             "vendor_id": doc.vendor_id,
             "vendor_name": vendor.name if vendor else "",
+            "vendor_location": vendor.location if vendor else "",
+            "vendor_products": vendor.products if vendor else [],
+            "vendor_certificates": vendor.certificates if vendor else [],
             "document_name": doc.document_name or "",
             "document_type": doc.document_type or "",
             "document_summary": doc.document_summary or "",
@@ -351,14 +400,14 @@ async def process_vendor_document(doc_id: str, db: Session) -> bool:
         index_to_opensearch(doc.id, embedding, metadata)
 
         db.commit()
-        print(f"  ✓ Processed document {doc_id}: {doc.document_name}")
+        print(f"  ✓ Processed document {doc.id}: {doc.document_url}")
         return True
 
     except Exception as e:
         doc.processing_status = "failed"
         doc.error_message = f"{type(e).__name__}: {str(e)}"
         db.commit()
-        print(f"  ✗ Failed to process document {doc_id}: {e}")
+        print(f"  ✗ Failed to process document {doc.id}: {e}")
         traceback.print_exc()
         return False
 

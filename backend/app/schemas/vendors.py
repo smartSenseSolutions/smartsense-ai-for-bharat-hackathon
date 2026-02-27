@@ -34,6 +34,7 @@ class VendorOut(BaseModel):
 class BulkUploadResult(BaseModel):
     total: int
     created: int
+    updated: int = 0
     failed: int
     documents_queued: int = 0
     errors: List[dict] = []

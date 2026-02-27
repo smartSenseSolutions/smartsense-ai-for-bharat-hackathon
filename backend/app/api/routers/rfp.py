@@ -7,8 +7,10 @@ from app.schemas.rfp import (
     RFPDistributeRequest,
     RFPChatRequest,
     RFPChatResponse,
+    RFPPublishRequest,
+    RFPPublishResponse,
 )
-from app.services.rfp import generate_rfp_draft, chat_rfp_assistant
+from app.services.rfp import generate_rfp_draft, chat_rfp_assistant, publish_rfp_to_s3
 
 router = APIRouter(prefix="/api/rfp", tags=["RFP Management"])
 
@@ -41,6 +43,26 @@ async def rfp_chat(request: RFPChatRequest):
         messages=[m.model_dump() for m in request.messages],
     )
     return result
+
+
+@router.post("/publish", response_model=RFPPublishResponse)
+def publish_rfp(request: RFPPublishRequest):
+    """
+    Generate a PDF of the RFP and upload it to S3.
+    File stored as {project_id}.pdf in the S3_RFP_BUCKET bucket.
+    Returns the public S3 URL and S3 key.
+    """
+    try:
+        result = publish_rfp_to_s3(
+            project_id=request.project_id,
+            project_name=request.project_name,
+            rfp_data=request.rfp_data,
+        )
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to publish RFP: {e}")
 
 
 @router.post("/distribute")

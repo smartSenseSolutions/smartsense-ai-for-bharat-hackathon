@@ -23,7 +23,7 @@ export type Screen = 'dashboard' | 'vendor-market' | 'vendor-onboarding' | 'prop
 export interface Project {
   id: string;
   projectName: string;
-  status: 'open' | 'draft' | 'closed';
+  status: 'draft' | 'published' | 'in-progress' | 'completed';
   rfpData: any;
   createdAt: Date;
 }
@@ -79,6 +79,29 @@ export default function App() {
   }, [currentProjectName]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/projects`);
+        if (response.ok) {
+          const data = await response.json();
+          const mappedProjects = data.map((p: any) => ({
+            id: p.id,
+            projectName: p.project_name,
+            status: p.status ? p.status.toLowerCase() : 'draft',
+            rfpData: p.rfp_data,
+            createdAt: new Date(p.created_at)
+          }));
+          setProjects(mappedProjects);
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+      }
+    };
+    fetchProjects();
+  }, []);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState('English');
@@ -123,12 +146,20 @@ export default function App() {
               }
             }}
             onCreateNew={() => {
+              setSelectedProposal(null);
               setCurrentProjectName('');
+              setCurrentRFPData(null);
               setCurrentScreen('project-name-entry');
             }}
             onViewDetails={(proposal) => {
               setSelectedProposal(proposal);
-              setCurrentScreen('proposal-details');
+              if (proposal.status === 'draft') {
+                setCurrentProjectName(proposal.projectName);
+                setCurrentRFPData(proposal.rfpData);
+                setCurrentScreen('ai-rfp-creator-centered');
+              } else {
+                setCurrentScreen('proposal-details');
+              }
             }}
           />
         );
@@ -138,6 +169,24 @@ export default function App() {
             proposal={selectedProposal}
             onBack={() => setCurrentScreen('proposals-list')}
             onNavigate={setCurrentScreen}
+            onStatusChange={async (status) => {
+              if (selectedProposal && selectedProposal.id.startsWith('RFP-')) {
+                const projectId = selectedProposal.id.replace('RFP-', '');
+                try {
+                  const response = await fetch(`${API_URL}/api/projects/${projectId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                  });
+                  if (response.ok) {
+                    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: status as any } : p));
+                  }
+                } catch (error) {
+                  console.error('Error updating project status:', error);
+                }
+              }
+              setSelectedProposal({ ...selectedProposal, status });
+            }}
           />
         );
       case 'create-proposal':
@@ -178,24 +227,132 @@ export default function App() {
         return (
           <AIRFPCreatorCentered
             projectName={currentProjectName}
+            initialRfpData={currentRFPData}
             onBack={() => {
               setCurrentScreen('proposals-list');
-              // Re-expand sidebar when returning
               setSidebarCollapsed(false);
             }}
-            onSendForApproval={(rfpData) => {
-              // Create new project with "open" status
-              const newProject: Project = {
-                id: Date.now().toString(),
-                projectName: rfpData.projectName,
-                status: 'open',
-                rfpData: rfpData,
-                createdAt: new Date(),
-              };
+            onSendForApproval={async (rfpData) => {
+              const existingProject = selectedProposal?.status === 'draft'
+                ? projects.find(p => p.id === selectedProposal.id.replace('RFP-', ''))
+                : null;
 
-              setProjects(prev => [newProject, ...prev]);
+              let finalProjectId: string | null = null;
+
+              try {
+                if (existingProject) {
+                  const response = await fetch(`${API_URL}/api/projects/${existingProject.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_name: rfpData.projectName || currentProjectName,
+                      status: 'published',
+                      rfp_data: rfpData
+                    })
+                  });
+                  if (response.ok) {
+                    finalProjectId = existingProject.id;
+                    setProjects(prev => prev.map(p => p.id === existingProject.id ? { ...p, status: 'published', rfpData, projectName: rfpData.projectName || currentProjectName } : p));
+                  }
+                } else {
+                  const response = await fetch(`${API_URL}/api/projects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_name: rfpData.projectName || currentProjectName,
+                      status: 'published',
+                      rfp_data: rfpData
+                    })
+                  });
+                  if (response.ok) {
+                    const newProj = await response.json();
+                    finalProjectId = newProj.id;
+                    const newProject: Project = {
+                      id: newProj.id,
+                      projectName: newProj.project_name,
+                      status: 'published',
+                      rfpData: newProj.rfp_data,
+                      createdAt: new Date(newProj.created_at),
+                    };
+                    setProjects(prev => [newProject, ...prev]);
+                  }
+                }
+              } catch (error) {
+                console.error("Error publishing RFP:", error);
+              }
+
+              // Upload PDF to S3 (fire-and-forget; errors are non-blocking)
+              if (finalProjectId) {
+                fetch(`${API_URL}/api/rfp/publish`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    project_id: finalProjectId,
+                    project_name: rfpData.projectName || currentProjectName,
+                    rfp_data: rfpData,
+                  }),
+                }).then(async (res) => {
+                  if (!res.ok) {
+                    const body = await res.text().catch(() => '');
+                    console.error(`RFP PDF upload failed [${res.status}]:`, body);
+                  } else {
+                    const data = await res.json();
+                    console.log("RFP PDF uploaded:", data.s3_url);
+                  }
+                }).catch(err => console.error("RFP PDF upload network error:", err));
+              }
+
+              setSelectedProposal(null);
               setCurrentScreen('proposals-list');
-              // Re-expand sidebar
+              setSidebarCollapsed(false);
+            }}
+            onSaveAsDraft={async (rfpData) => {
+              const existingProject = selectedProposal?.status === 'draft'
+                ? projects.find(p => p.id === selectedProposal.id.replace('RFP-', ''))
+                : null;
+
+              try {
+                if (existingProject) {
+                  const response = await fetch(`${API_URL}/api/projects/${existingProject.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_name: rfpData.projectName || currentProjectName,
+                      status: 'draft',
+                      rfp_data: rfpData
+                    })
+                  });
+                  if (response.ok) {
+                    setProjects(prev => prev.map(p => p.id === existingProject.id ? { ...p, rfpData, projectName: rfpData.projectName || currentProjectName } : p));
+                  }
+                } else {
+                  const response = await fetch(`${API_URL}/api/projects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_name: rfpData.projectName || currentProjectName,
+                      status: 'draft',
+                      rfp_data: rfpData
+                    })
+                  });
+                  if (response.ok) {
+                    const newProj = await response.json();
+                    const newProject: Project = {
+                      id: newProj.id,
+                      projectName: newProj.project_name,
+                      status: 'draft',
+                      rfpData: newProj.rfp_data,
+                      createdAt: new Date(newProj.created_at),
+                    };
+                    setProjects(prev => [newProject, ...prev]);
+                  }
+                }
+              } catch (error) {
+                console.error("Error saving draft:", error);
+              }
+
+              setSelectedProposal(null);
+              setCurrentScreen('proposals-list');
               setSidebarCollapsed(false);
             }}
           />

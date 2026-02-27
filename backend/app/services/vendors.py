@@ -118,7 +118,7 @@ def _split_field(value: str) -> list[str]:
 
 def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
     """
-    Parse CSV bytes and bulk-insert Vendor rows.
+    Parse CSV bytes and upsert Vendor rows (matched by vendor_name).
 
     CSV columns (in any order, matched by header name):
         vendor_name, location, estd, mobile, email,
@@ -126,62 +126,78 @@ def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
 
     Multi-value fields (certificates, products, document_links) use
     semicolons as separator.
-    Returns a summary dict: {total, created, failed, documents_queued, errors}.
+    Returns a summary dict: {total, created, updated, failed, documents_queued, errors}.
     """
     text = csv_bytes.decode("utf-8-sig")  # strip BOM if present
     reader = csv.DictReader(io.StringIO(text))
 
     rows = list(reader)
     created = 0
+    updated = 0
     failed = 0
     documents_queued = 0
     errors: list[dict] = []
 
     for i, row in enumerate(rows, start=1):
         try:
-            name = (row.get("vendor_name") or "").strip()
-            if not name:
-                raise ValueError("vendor_name is required")
+            with db.begin_nested():
+                name = (row.get("vendor_name") or "").strip()
+                if not name:
+                    raise ValueError("vendor_name is required")
 
-            estd_raw = (row.get("estd") or "").strip()
-            estd = int(estd_raw) if estd_raw else None
+                estd_raw = (row.get("estd") or "").strip()
+                estd = int(estd_raw) if estd_raw else None
 
-            certs_raw = (row.get("certificates") or "").strip()
-            certs = _split_field(certs_raw) if certs_raw else []
+                certs_raw = (row.get("certificates") or "").strip()
+                certs = _split_field(certs_raw) if certs_raw else []
 
-            products_raw = (row.get("products") or "").strip()
-            products = _split_field(products_raw) if products_raw else []
+                products_raw = (row.get("products") or "").strip()
+                products = _split_field(products_raw) if products_raw else []
 
-            vendor_id = str(uuid.uuid4())
-            vendor = Vendor(
-                id=vendor_id,
-                name=name,
-                location=(row.get("location") or "").strip() or None,
-                estd=estd,
-                mobile=(row.get("mobile") or "").strip() or None,
-                contact_email=(row.get("email") or "").strip() or None,
-                certificates=certs or None,
-                products=products or None,
-                website=(row.get("website") or "").strip() or None,
-            )
-            db.add(vendor)
-            db.flush()
-            created += 1
+                fields = dict(
+                    name=name,
+                    location=(row.get("location") or "").strip() or None,
+                    estd=estd,
+                    mobile=(row.get("mobile") or "").strip() or None,
+                    contact_email=(row.get("email") or "").strip() or None,
+                    certificates=certs or None,
+                    products=products or None,
+                    website=(row.get("website") or "").strip() or None,
+                )
 
-            # Parse document_links and create VendorDocument rows
-            doc_links_raw = (row.get("document_links") or "").strip()
-            if doc_links_raw:
-                doc_links = _split_field(doc_links_raw)
-                for link in doc_links:
-                    doc = VendorDocument(
-                        id=str(uuid.uuid4()),
-                        vendor_id=vendor_id,
-                        document_url=link,
-                        processing_status="pending",
-                    )
-                    db.add(doc)
-                    documents_queued += 1
+                existing = db.query(Vendor).filter(Vendor.name == name).first()
+                if existing:
+                    for key, value in fields.items():
+                        setattr(existing, key, value)
+                    db.flush()
+                    vendor = existing
+                    # Remove old documents so they are replaced by the new ones below
+                    db.query(VendorDocument).filter(
+                        VendorDocument.vendor_id == vendor.id
+                    ).delete()
+                    updated += 1
+                else:
+                    vendor = Vendor(id=str(uuid.uuid4()), **fields)
+                    db.add(vendor)
+                    db.flush()
+                    created += 1
 
+                # Index into vector db
+                index_vendor_to_opensearch(vendor)
+
+                # Parse document_links and create VendorDocument rows
+                doc_links_raw = (row.get("document_links") or "").strip()
+                if doc_links_raw:
+                    doc_links = _split_field(doc_links_raw)
+                    for link in doc_links:
+                        doc = VendorDocument(
+                            id=str(uuid.uuid4()),
+                            vendor_id=vendor.id,
+                            document_url=link,
+                            processing_status="pending",
+                        )
+                        db.add(doc)
+                        documents_queued += 1
         except Exception as exc:
             failed += 1
             errors.append({"row": i, "error": str(exc)})
@@ -190,17 +206,78 @@ def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
     return {
         "total": len(rows),
         "created": created,
+        "updated": updated,
         "failed": failed,
         "documents_queued": documents_queued,
         "errors": errors,
     }
 
 
+def index_vendor_to_opensearch(vendor: Vendor):
+    """Generate embedding and index vendor details into OpenSearch."""
+    try:
+        from app.services.documents import (
+            generate_embedding,
+            _get_opensearch_client,
+            VENDOR_INDEX_NAME,
+        )
+
+        client = _get_opensearch_client()
+
+        products_str = ", ".join(vendor.products) if vendor.products else ""
+        certs_str = ", ".join(vendor.certificates) if vendor.certificates else ""
+
+        embed_text = (
+            f"Vendor: {vendor.name}\n"
+            f"Location: {vendor.location or ''}\n"
+            f"Established: {vendor.estd or ''}\n"
+            f"Products: {products_str}\n"
+            f"Certificates: {certs_str}\n"
+            f"Website: {vendor.website or ''}\n"
+        )
+
+        embedding = generate_embedding(embed_text)
+
+        metadata = {
+            "vendor_id": vendor.id,
+            "vendor_name": vendor.name,
+            "location": vendor.location or "",
+            "estd": vendor.estd,
+            "mobile": vendor.mobile or "",
+            "contact_email": vendor.contact_email or "",
+            "website": vendor.website or "",
+            "products": vendor.products or [],
+            "certificates": vendor.certificates or [],
+        }
+
+        body = {
+            "vendor_id": vendor.id,
+            "embedding": embedding,
+            **metadata,
+        }
+
+        client.index(index=VENDOR_INDEX_NAME, id=vendor.id, body=body)
+        print(f"✓ Indexed vendor {vendor.name} to OpenSearch")
+    except Exception as e:
+        print(f"⚠ Could not index vendor {vendor.name} to OpenSearch: {e}")
+
+
 def create_vendor(db: Session, data: dict) -> Vendor:
+    name = data.get("name", "")
+    existing = db.query(Vendor).filter(Vendor.name == name).first()
+    if existing:
+        for key, value in data.items():
+            setattr(existing, key, value)
+        db.commit()
+        db.refresh(existing)
+        index_vendor_to_opensearch(existing)
+        return existing
+
     vendor = Vendor(id=str(uuid.uuid4()), **data)
     db.add(vendor)
     db.commit()
     db.refresh(vendor)
+    index_vendor_to_opensearch(vendor)
     return vendor
 
 

@@ -46,9 +46,28 @@ class RFPDataResponse(BaseModel):
     specifications: List[str]
     qualityStandards: List[str]
     rfpDeadline: str
+    costBornByRespondents: str
+    changesInScope: str
+    clarificationOfSubmissions: str
 
 
 class RFPChatResponse(BaseModel):
     reply: str
     is_complete: bool
     rfp_data: Optional[RFPDataResponse] = None
+
+
+# ---------------------------------------------------------------------------
+# RFP Publish (PDF → S3)
+# ---------------------------------------------------------------------------
+
+
+class RFPPublishRequest(BaseModel):
+    project_id: str
+    project_name: str
+    rfp_data: dict
+
+
+class RFPPublishResponse(BaseModel):
+    s3_url: str
+    s3_key: str
