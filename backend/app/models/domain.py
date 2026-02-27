@@ -122,3 +122,13 @@ class VendorDocument(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     vendor = relationship("Vendor", back_populates="documents")
+
+
+class SearchHistory(Base):
+    __tablename__ = "search_history"
+
+    id = Column(String, primary_key=True, index=True)
+    query = Column(String, index=True)
+    internal_results = Column(JSON, nullable=True)
+    external_results = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

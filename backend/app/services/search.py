@@ -1,16 +1,20 @@
-from exa_py import Exa
+import os
+from google import genai
+from google.genai import types
 from app.core.config import settings
 from app.services.documents import (
     generate_embedding,
     _get_opensearch_client,
     VENDOR_INDEX_NAME,
 )
+import json
 
 
-def get_exa_client() -> Exa:
-    if not settings.EXA_API_KEY:
-        raise ValueError("Exa API key not configured")
-    return Exa(api_key=settings.EXA_API_KEY)
+def get_gemini_client() -> genai.Client:
+    api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("Gemini API key not configured")
+    return genai.Client(api_key=api_key)
 
 
 async def search_external_vendors(query: str, num_results: int = 10):
@@ -66,38 +70,281 @@ async def search_external_vendors(query: str, num_results: int = 10):
     except Exception as e:
         print(f"Error searching OpenSearch: {e}")
 
-    # 2. Search Exa
+    # 2. Search Gemini
     try:
-        exa = get_exa_client()
-        # Exa search works best with natural language queries looking for matches
-        response = exa.search_and_contents(
-            query=f"Companies or vendors providing: {query}",
-            type="neural",
-            use_autoprompt=True,
-            num_results=num_results,
-            text=True,
-            highlights=True,
-        )
-
-        for res in response.results:
-            # Score normalization (Exa returns score, but usually we just rank them)
-            # We'll assign a mock relevancy_score for now based on normalized rank
+        external_results = await search_gemini_vendors(query, num_results)
+        for external in external_results:
             results.append(
                 {
-                    "id": res.id,
-                    "name": res.title or res.url,
-                    "url": res.url,
-                    "description": res.text[:200] + "..." if res.text else "",
-                    "relevancy_score": res.score
-                    if hasattr(res, "score") and res.score
-                    else 0.8,
+                    "id": external["vendor_id"],
+                    "name": external["vendor_name"],
+                    "url": external["website"],
+                    "description": external["description"],
+                    "relevancy_score": external["final_score"],
                     "source": "external",
                 }
             )
-
     except Exception as e:
-        print(f"Error searching Exa: {e}")
+        print(f"Error searching Gemini: {e}")
 
     # Sort combined results by score descending
     results.sort(key=lambda x: x.get("relevancy_score", 0), reverse=True)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Hybrid vendor search: keyword (BM25) + vector (kNN) with score fusion
+# ---------------------------------------------------------------------------
+
+# Field boosts for the keyword (BM25) phase.
+# Higher boost → field carries more weight when it matches the query.
+_KEYWORD_FIELD_BOOSTS = {
+    "vendor_name": 5.0,  # Exact/partial name match is very specific
+    "products": 4.0,  # Primary procurement signal
+    "certificates": 3.0,  # Compliance requirements
+    "location": 2.0,  # Geographic preference
+    "certificate_details.document_type": 2.0,  # Cert type from AI-extracted docs
+    "certificate_details.document_summary": 1.5,  # Rich AI-extracted text
+    "certificate_details.issuing_authority": 1.0,  # Issuing body
+}
+
+
+def _build_keyword_query(query: str) -> dict:
+    """Build a bool/should query that scores each field independently."""
+    should_clauses = [
+        {"match": {field: {"query": query, "boost": boost}}}
+        for field, boost in _KEYWORD_FIELD_BOOSTS.items()
+    ]
+    return {
+        "bool": {
+            "should": should_clauses,
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _normalize(scores: dict[str, float]) -> dict[str, float]:
+    """Min-max normalise a {id: score} dict to [0, 1]."""
+    if not scores:
+        return {}
+    lo = min(scores.values())
+    hi = max(scores.values())
+    if hi == lo:
+        return {k: 1.0 for k in scores}
+    return {k: (v - lo) / (hi - lo) for k, v in scores.items()}
+
+
+async def search_vendors_hybrid(query: str) -> list[dict]:
+    """
+    Two-phase hybrid search over the vendors OpenSearch index.
+
+    Phase 1 — Vector (kNN):
+        Generate a 1024-dim embedding for the query and retrieve the top
+        `top_n * candidate_multiplier` nearest neighbours by cosine
+        similarity.
+
+    Phase 2 — Keyword (BM25):
+        Run a bool/should multi-match query with per-field boosts across
+        vendor_name, products, certificates, location and AI-extracted
+        certificate detail fields.
+
+    Score fusion:
+        Both score sets are independently min-max normalised to [0, 1],
+        then combined as:
+
+            final = KEYWORD_WEIGHT * kw_norm + VECTOR_WEIGHT * vec_norm
+
+        The top N results (VENDOR_SEARCH_TOP_N, default 3) are returned.
+
+    Each phase is wrapped independently so a failure in one (e.g. Bedrock
+    unavailable for embeddings) still returns results from the other.
+    """
+    import traceback
+
+    top_n = settings.VENDOR_SEARCH_TOP_N
+    candidates = top_n * settings.VENDOR_SEARCH_CANDIDATE_MULTIPLIER
+    kw_weight = settings.VENDOR_SEARCH_KEYWORD_WEIGHT
+    vec_weight = settings.VENDOR_SEARCH_VECTOR_WEIGHT
+
+    client = _get_opensearch_client()
+
+    vector_hits: dict[str, dict] = {}
+    keyword_hits: dict[str, dict] = {}
+
+    # ── Phase 1: vector search ──────────────────────────────────────────────
+    try:
+        query_embedding = generate_embedding(query)
+        vector_response = client.search(
+            index=VENDOR_INDEX_NAME,
+            body={
+                "size": candidates,
+                "query": {
+                    "knn": {
+                        "embedding": {
+                            "vector": query_embedding,
+                            "k": candidates,
+                        }
+                    }
+                },
+                "_source": {"excludes": ["embedding"]},
+            },
+        )
+        for hit in vector_response["hits"]["hits"]:
+            vid = hit["_source"].get("vendor_id") or hit["_id"]
+            vector_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
+        print(f"[search] vector phase: {len(vector_hits)} hits")
+    except Exception as e:
+        print(f"[search] vector phase failed: {e}")
+        traceback.print_exc()
+
+    # ── Phase 2: keyword search ─────────────────────────────────────────────
+    try:
+        keyword_response = client.search(
+            index=VENDOR_INDEX_NAME,
+            body={
+                "size": candidates,
+                "query": _build_keyword_query(query),
+                "_source": {"excludes": ["embedding"]},
+            },
+        )
+        for hit in keyword_response["hits"]["hits"]:
+            vid = hit["_source"].get("vendor_id") or hit["_id"]
+            keyword_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
+        print(f"[search] keyword phase: {len(keyword_hits)} hits")
+    except Exception as e:
+        print(f"[search] keyword phase failed: {e}")
+        traceback.print_exc()
+
+    if not vector_hits and not keyword_hits:
+        print("[search] both phases returned no results")
+        return []
+
+    # ── Score fusion ────────────────────────────────────────────────────────
+    norm_vec = _normalize({vid: h["score"] for vid, h in vector_hits.items()})
+    norm_kw = _normalize({vid: h["score"] for vid, h in keyword_hits.items()})
+
+    all_ids = set(vector_hits) | set(keyword_hits)
+
+    results = []
+    for vid in all_ids:
+        vec_score = norm_vec.get(vid, 0.0)
+        kw_score = norm_kw.get(vid, 0.0)
+        final_score = kw_weight * kw_score + vec_weight * vec_score
+
+        source = (vector_hits.get(vid) or keyword_hits[vid])["source"]
+
+        # Build the certificates list from two sources:
+        # 1. vendor.certificates — text names entered directly in the CSV
+        # 2. certificate_details[].document_name — AI-extracted from uploaded docs
+        # Both are combined and deduplicated so vendors onboarded either way
+        # always surface their certificates in search results.
+        csv_certs: list[str] = source.get("certificates") or []
+        doc_certs: list[str] = [
+            d.get("document_name") or d.get("document_type", "")
+            for d in (source.get("certificate_details") or [])
+            if d.get("document_name") or d.get("document_type")
+        ]
+        # Preserve order; drop duplicates and blanks
+        seen: set[str] = set()
+        all_certs: list[str] = []
+        for c in csv_certs + doc_certs:
+            c = c.strip()
+            if c and c not in seen:
+                seen.add(c)
+                all_certs.append(c)
+
+        raw_details: list[dict] = source.get("certificate_details") or []
+        print(
+            f"[search] vendor {source.get('vendor_name')}: "
+            f"csv_certs={csv_certs} doc_certs={doc_certs} "
+            f"all_certs={all_certs} estd={source.get('estd')} "
+            f"cert_details_count={len(raw_details)}"
+        )
+
+        results.append(
+            {
+                "vendor_id": vid,
+                "vendor_name": source.get("vendor_name", ""),
+                "source": "internal",
+                "description": "",
+                "location": source.get("location", ""),
+                "products": source.get("products") or [],
+                "certificates": all_certs,
+                "certificate_details": raw_details,
+                "website": source.get("website", ""),
+                "contact_email": source.get("contact_email", ""),
+                "mobile": source.get("mobile", ""),
+                "estd": source.get("estd"),
+                "final_score": round(final_score, 4),
+                "keyword_score": round(kw_score, 4),
+                "vector_score": round(vec_score, 4),
+            }
+        )
+
+    results.sort(key=lambda x: x["final_score"], reverse=True)
+    return results[:top_n]
+
+
+async def search_gemini_vendors(query: str, num_results: int = 5) -> list[dict]:
+    """
+    Search for external vendors using Gemini Search and structured output.
+    """
+    try:
+        client = get_gemini_client()
+        prompt = f"""
+        Find {num_results} actual {query}. 
+        Use Google Search to find their details. Do NOT return directory sites like Indiamart or Justdial.
+        
+        Return STRICTLY a JSON array of objects. Do not include any markdown formatting like ```json.
+        Each object must have these exactly matching string keys:
+        - "vendor_name": "Name of the manufacturer"
+        - "website": "Their official website URL"
+        - "description": "A 2-sentence summary of what they do"
+        - "location": "Their full city and state"
+        - "products": ["list", "of", "products"]
+        - "contact_email": "email" or empty string
+        - "mobile": "mobile number" or empty string
+        - "estd": establishment year as integer or null
+        """
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}],
+            ),
+        )
+
+        content = response.text.strip()
+        if content.startswith("```json"):
+            content = content[7:-3]
+        elif content.startswith("```"):
+            content = content[3:-3]
+
+        vendors_data = json.loads(content)
+
+        results = []
+        for i, v in enumerate(vendors_data):
+            results.append(
+                {
+                    "vendor_id": f"gemini_{i}",
+                    "vendor_name": v.get("vendor_name", ""),
+                    "source": "external",
+                    "description": v.get("description", ""),
+                    "location": v.get("location", ""),
+                    "products": v.get("products", []),
+                    "certificates": [],
+                    "certificate_details": [],
+                    "website": v.get("website", ""),
+                    "contact_email": v.get("contact_email", ""),
+                    "mobile": v.get("mobile", ""),
+                    "estd": v.get("estd", None),
+                    "final_score": round(0.9 - (i * 0.05), 4),
+                    "keyword_score": 0.0,
+                    "vector_score": 0.0,
+                }
+            )
+        print(f"[search] Gemini phase: {len(results)} hits")
+        return results
+    except Exception as e:
+        print(f"[search] Gemini phase failed: {e}")
+        return []
