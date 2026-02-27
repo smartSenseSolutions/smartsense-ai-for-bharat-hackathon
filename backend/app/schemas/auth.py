@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -11,8 +12,13 @@ class UserResponse(BaseModel):
     email: str
     is_superuser: bool
     is_active: bool
+    company_logo_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdateRequest(BaseModel):
+    company_logo_url: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

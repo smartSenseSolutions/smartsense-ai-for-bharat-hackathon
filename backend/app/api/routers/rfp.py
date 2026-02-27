@@ -57,6 +57,7 @@ def publish_rfp(request: RFPPublishRequest):
             project_id=request.project_id,
             project_name=request.project_name,
             rfp_data=request.rfp_data,
+            company_logo_url=request.company_logo_url,
         )
         return result
     except RuntimeError as e:

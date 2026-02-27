@@ -1,13 +1,46 @@
-import { ArrowLeft, Users, MessageSquare, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download } from 'lucide-react';
-import { useState, Fragment } from 'react';
+import { ArrowLeft, Users, MessageSquare, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search } from 'lucide-react';
+import { useState, Fragment, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
+import { Card, CardContent } from '@/app/components/ui/card';
 import { QueriesPhaseGmail } from '@/app/components/screens/QueriesPhaseGmail';
 import { QuotationsPhaseGmail } from '@/app/components/screens/QuotationsPhaseGmail';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
+
+
+interface CertificateDetail {
+  document_type: string;
+  document_name: string;
+  document_summary: string;
+  issuing_authority: string;
+  issued_to: string;
+  issue_date: string | null;
+  expiry_date: string | null;
+  document_url: string;
+}
+
+interface AIVendorResult {
+  vendor_id: string;
+  vendor_name: string;
+  source: string;
+  description: string;
+  location: string;
+  products: string[];
+  certificates: string[];
+  certificate_details: CertificateDetail[];
+  website: string;
+  contact_email: string;
+  mobile: string;
+  estd: number | null;
+  final_score: number;
+  keyword_score: number;
+  vector_score: number;
+}
+
+const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
 
 interface ProposalDetailsProps {
   proposal: any;
@@ -44,9 +77,9 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
         </button>
 
         <div className="mb-5">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">{proposal.title}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-1">{proposal?.title}</h1>
           <p className="text-sm text-gray-500">
-            Created: {new Date(proposal.createdDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            Created: {proposal?.createdDate ? new Date(proposal.createdDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
           </p>
         </div>
 
@@ -65,10 +98,10 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
                   className="flex flex-col items-center gap-1.5 relative"
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all relative z-10 ${isActive
+                    ? 'bg-[#3B82F6] text-white'
+                    : isCompleted
                       ? 'bg-[#3B82F6] text-white'
-                      : isCompleted
-                        ? 'bg-[#3B82F6] text-white'
-                        : 'bg-white border border-gray-200 text-gray-400'
+                      : 'bg-white border border-gray-200 text-gray-400'
                     }`}>
                     <Icon className="w-3.5 h-3.5" />
 
@@ -80,10 +113,10 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
                     )}
                   </div>
                   <span className={`text-xs whitespace-nowrap ${isActive
-                      ? 'text-gray-900 font-medium'
-                      : isCompleted
-                        ? 'text-gray-600'
-                        : 'text-gray-400'
+                    ? 'text-gray-900 font-medium'
+                    : isCompleted
+                      ? 'text-gray-600'
+                      : 'text-gray-400'
                     }`}>
                     {phase.label}
                   </span>
@@ -92,8 +125,8 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
                 {/* Connecting Line */}
                 {index < phases.length - 1 && (
                   <div className={`w-16 h-px mx-2 transition-all self-start mt-4 ${index < activeIndex
-                      ? 'bg-[#3B82F6]'
-                      : 'bg-gray-200'
+                    ? 'bg-[#3B82F6]'
+                    : 'bg-gray-200'
                     }`} />
                 )}
               </div>
@@ -121,25 +154,88 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
 function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChange?: (status: string) => void }) {
   const [activeTab, setActiveTab] = useState<'search' | 'invited'>('search');
   const [vendors, setVendors] = useState([
-    { id: 1, name: 'TechDistributor Inc.', email: 'contact@techdist.com', category: 'Medical Devices', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: 2, name: 'Global Electronics Supply', email: 'info@globalsupply.com', category: 'Laboratory Equipment', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: 3, name: 'Enterprise Solutions Co.', email: 'sales@enterprise.com', category: 'Pharmaceutical Supplies', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: 4, name: 'MedSupply International', email: 'orders@medsupply.com', category: 'Diagnostic Tools', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: 5, name: 'Healthcare Distributors', email: 'info@healthdist.com', category: 'Medical Consumables', status: 'invited', invitedAt: '21 Jan 2026' },
+    { id: '1', name: 'TechDistributor Inc.', email: 'contact@techdist.com', category: 'Medical Devices', status: 'invited', invitedAt: '21 Jan 2026' },
+    { id: '2', name: 'Global Electronics Supply', email: 'info@globalsupply.com', category: 'Laboratory Equipment', status: 'invited', invitedAt: '21 Jan 2026' },
+    { id: '3', name: 'Enterprise Solutions Co.', email: 'sales@enterprise.com', category: 'Pharmaceutical Supplies', status: 'invited', invitedAt: '21 Jan 2026' },
+    { id: '4', name: 'MedSupply International', email: 'orders@medsupply.com', category: 'Diagnostic Tools', status: 'invited', invitedAt: '21 Jan 2026' },
+    { id: '5', name: 'Healthcare Distributors', email: 'info@healthdist.com', category: 'Medical Consumables', status: 'invited', invitedAt: '21 Jan 2026' },
   ]);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
-  const [invitedVendors, setInvitedVendors] = useState<number[]>([]);
-  const [displayedCount, setDisplayedCount] = useState(6);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
+  const [invitedVendors, setInvitedVendors] = useState<string[]>([]);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [selectedVendorForPanel, setSelectedVendorForPanel] = useState<any>(null);
 
-  const handleVendorSelect = (vendorId: number) => {
-    // Don't allow selecting vendors that have already been invited
-    if (invitedVendors.includes(vendorId)) return;
+  const [internalResults, setInternalResults] = useState<AIVendorResult[]>([]);
+  const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
+  const [isInternalLoading, setIsInternalLoading] = useState(false);
+  const [isExternalLoading, setIsExternalLoading] = useState(false);
 
+  useEffect(() => {
+    if (proposal && proposal.status === 'published' && proposal.title) {
+       fireSearch(proposal.title);
+    }
+  }, [proposal]);
+
+  const fireSearch = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setSubmittedQuery(trimmed);
+    setSearchQuery(trimmed);
+    setInternalResults([]);
+    setExternalResults([]);
+    setIsInternalLoading(true);
+    setIsExternalLoading(true);
+
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    // 1. Fetch fast internal results
+    fetch(`${API_BASE}/api/search/vendors/smart/internal`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: trimmed }),
+    })
+      .then(res => res.ok ? res.json() : { results: [] })
+      .then(data => {
+        setInternalResults(data.results ?? []);
+        setIsInternalLoading(false);
+      })
+      .catch(err => {
+        console.error('Internal search failed:', err);
+        setIsInternalLoading(false);
+      });
+
+    // 2. Fetch slower external Gemini results
+    fetch(`${API_BASE}/api/search/vendors/smart/external`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: trimmed }),
+    })
+      .then(res => res.ok ? res.json() : { results: [] })
+      .then(data => {
+        setExternalResults(data.results ?? []);
+        setIsExternalLoading(false);
+      })
+      .catch(err => {
+        console.error('External search failed:', err);
+        setIsExternalLoading(false);
+      });
+  };
+
+  const handleSearch = () => {
+    if (searchQuery.trim().length > 0) {
+      fireSearch(searchQuery);
+    }
+  };
+
+  const handleVendorSelect = (vendorId: string) => {
+    if (invitedVendors.includes(vendorId)) return;
     setSelectedVendors(prev =>
       prev.includes(vendorId)
         ? prev.filter(id => id !== vendorId)
@@ -147,375 +243,162 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
     );
   };
 
-  const handleCardClick = (vendor: any, e: React.MouseEvent) => {
-    // If clicking on checkbox area, don't open panel
+  const toDetailVendor = (r: AIVendorResult) => ({
+    id: r.vendor_id,
+    name: r.vendor_name,
+    category: r.products.length > 0 ? r.products[0] : 'General Supplies',
+    location: r.location || 'Unknown',
+    yearsOfExperience: r.estd ? new Date().getFullYear() - r.estd : 5,
+    rating: (r.final_score * 5).toFixed(1),
+    certificates: r.certificates,
+    certificate_details: r.certificate_details,
+    trustScore: Math.round(r.final_score * 100),
+    contact_email: r.contact_email,
+    mobile: r.mobile,
+    website: r.website,
+    aiTags: [r.source === 'internal' ? 'Verified Partner' : 'AI Discovered'],
+    description: r.description
+  });
+
+  const handleCardClick = (vendor: AIVendorResult, e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.checkbox-area')) {
+    if (target.closest('.checkbox-area') || target.closest('a')) {
       return;
     }
-
-    // Open side panel with vendor details
-    setSelectedVendorForPanel(vendor);
+    setSelectedVendorForPanel(toDetailVendor(vendor));
     setSidePanelOpen(true);
   };
 
   const handleSendInvites = () => {
-    // Add selected vendors to invited list
     setInvitedVendors(prev => [...prev, ...selectedVendors]);
-
-    // Show toast notification
-    toast.success('Invites sent to vendor(s)');
-
+    toast.success('Invites sent to ' + selectedVendors.length + ' vendor(s)');
     if (proposal.status !== 'in-progress' && proposal.status !== 'completed') {
       onStatusChange?.('in-progress');
     }
-
-    // Clear selected vendors
     setSelectedVendors([]);
   };
 
-  // All available vendors
-  const allAvailableVendors = [
-    {
-      id: 1,
-      name: 'MedTech Solutions',
-      category: 'Medical Devices',
-      location: 'Mumbai, Maharashtra',
-      rating: 4.8,
-      aiTags: ['Best Price Match'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 12,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 2,
-      name: 'HealthSupply Corp',
-      category: 'Laboratory Equipment',
-      location: 'Bangalore, Karnataka',
-      rating: 4.6,
-      aiTags: ['Fast Delivery'],
-      certificates: ['ISO 9001', 'GMP Certified'],
-      yearsOfExperience: 8,
-      status: 'Contacted'
-    },
-    {
-      id: 3,
-      name: 'BioMed Innovations',
-      category: 'Pharmaceutical Supplies',
-      location: 'Delhi, NCR',
-      rating: 4.9,
-      aiTags: ['Highest Quality Rating'],
-      certificates: ['FDA Approved', 'WHO-GMP'],
-      yearsOfExperience: 15,
-      status: 'New Vendor'
-    },
-    {
-      id: 4,
-      name: 'Clinical Equipment Ltd',
-      category: 'Diagnostic Tools',
-      location: 'Hyderabad, Telangana',
-      rating: 4.7,
-      aiTags: ['Bulk Discount Available'],
-      certificates: ['CE Certified', 'ISO 13485'],
-      yearsOfExperience: 10,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 5,
-      name: 'Global Health Supplies',
-      category: 'Medical Consumables',
-      location: 'Chennai, Tamil Nadu',
-      rating: 4.5,
-      aiTags: ['Wide Product Range'],
-      certificates: ['ISO 9001', 'NABL Accredited'],
-      yearsOfExperience: 7,
-      status: 'New Vendor'
-    },
-    {
-      id: 6,
-      name: 'Advanced Medical Tech',
-      category: 'Surgical Instruments',
-      location: 'Pune, Maharashtra',
-      rating: 4.8,
-      aiTags: ['Expert Support'],
-      certificates: ['ISO 13485', 'FDA Registered'],
-      yearsOfExperience: 14,
-      status: 'Contacted'
-    },
-    {
-      id: 7,
-      name: 'PharmaSupply International',
-      category: 'Pharmaceutical Supplies',
-      location: 'Ahmedabad, Gujarat',
-      rating: 4.7,
-      aiTags: ['Competitive Pricing'],
-      certificates: ['WHO-GMP', 'ISO 9001'],
-      yearsOfExperience: 11,
-      status: 'New Vendor'
-    },
-    {
-      id: 8,
-      name: 'Diagnostic Solutions Co',
-      category: 'Laboratory Equipment',
-      location: 'Kolkata, West Bengal',
-      rating: 4.6,
-      aiTags: ['Quick Turnaround'],
-      certificates: ['NABL Accredited', 'ISO 17025'],
-      yearsOfExperience: 9,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 9,
-      name: 'Imaging Systems International',
-      category: 'CT Scanners & MRI Equipment',
-      location: 'Gurgaon, Haryana',
-      rating: 4.9,
-      aiTags: ['Latest Technology'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 16,
-      status: 'New Vendor'
-    },
-    {
-      id: 10,
-      name: 'RadTech Medical Imaging',
-      category: 'CT Scan Equipment',
-      location: 'Noida, Uttar Pradesh',
-      rating: 4.8,
-      aiTags: ['Competitive Pricing'],
-      certificates: ['FDA Registered', 'ISO 13485'],
-      yearsOfExperience: 13,
-      status: 'Contacted'
-    },
-    {
-      id: 11,
-      name: 'ProScan Medical Devices',
-      category: 'CT Scanner Systems',
-      location: 'Jaipur, Rajasthan',
-      rating: 4.7,
-      aiTags: ['Fast Installation'],
-      certificates: ['CE Certified', 'ISO 9001'],
-      yearsOfExperience: 11,
-      status: 'New Vendor'
-    },
-    {
-      id: 12,
-      name: 'Elite Diagnostic Equipment',
-      category: 'Medical Imaging - CT & X-Ray',
-      location: 'Chandigarh, Punjab',
-      rating: 4.8,
-      aiTags: ['Warranty Coverage'],
-      certificates: ['FDA Approved', 'ISO 13485'],
-      yearsOfExperience: 14,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 13,
-      name: 'Advanced CT Imaging Solutions',
-      category: 'CT Scan Systems',
-      location: 'Indore, Madhya Pradesh',
-      rating: 4.7,
-      aiTags: ['24/7 Support'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 10,
-      status: 'Contacted'
-    },
-    {
-      id: 14,
-      name: 'MediScan Technologies',
-      category: 'CT Scanner Equipment',
-      location: 'Kochi, Kerala',
-      rating: 4.6,
-      aiTags: ['Cost Effective'],
-      certificates: ['ISO 9001', 'NABL Accredited'],
-      yearsOfExperience: 8,
-      status: 'New Vendor'
-    },
-    {
-      id: 15,
-      name: 'Precision CT Systems',
-      category: 'CT Imaging Equipment',
-      location: 'Lucknow, Uttar Pradesh',
-      rating: 4.8,
-      aiTags: ['High Resolution'],
-      certificates: ['ISO 13485', 'FDA Registered'],
-      yearsOfExperience: 12,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 16,
-      name: 'NextGen CT Scanners',
-      category: 'CT Medical Equipment',
-      location: 'Surat, Gujarat',
-      rating: 4.9,
-      aiTags: ['Latest Models'],
-      certificates: ['CE Certified', 'ISO 13485'],
-      yearsOfExperience: 15,
-      status: 'New Vendor'
-    },
-    {
-      id: 17,
-      name: 'Premium CT Scan Solutions',
-      category: 'CT Scan Equipment & Services',
-      location: 'Visakhapatnam, Andhra Pradesh',
-      rating: 4.7,
-      aiTags: ['Premium Quality'],
-      certificates: ['ISO 9001', 'CE Certified'],
-      yearsOfExperience: 11,
-      status: 'Contacted'
-    },
-    {
-      id: 18,
-      name: 'TechMed CT Imaging',
-      category: 'CT Scanner & Imaging Systems',
-      location: 'Coimbatore, Tamil Nadu',
-      rating: 4.8,
-      aiTags: ['Expert Installation'],
-      certificates: ['FDA Approved', 'ISO 13485'],
-      yearsOfExperience: 13,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 19,
-      name: 'SurgiGlove Medical Supplies',
-      category: 'Surgical Gloves & PPE',
-      location: 'Mumbai, Maharashtra',
-      rating: 4.8,
-      aiTags: ['Bulk Pricing'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 9,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 20,
-      name: 'PremiumGlove International',
-      category: 'Surgical Gloves - Sterile',
-      location: 'Delhi, NCR',
-      rating: 4.9,
-      aiTags: ['Fast Shipping'],
-      certificates: ['FDA Certified', 'ISO 13485'],
-      yearsOfExperience: 14,
-      status: 'New Vendor'
-    },
-    {
-      id: 21,
-      name: 'MedProtect Glove Solutions',
-      category: 'Surgical & Exam Gloves',
-      location: 'Bangalore, Karnataka',
-      rating: 4.7,
-      aiTags: ['Wide Size Range'],
-      certificates: ['ISO 9001', 'GMP Certified'],
-      yearsOfExperience: 10,
-      status: 'Contacted'
-    },
-    {
-      id: 22,
-      name: 'SterileTouch Supply Co',
-      category: 'Surgical Gloves Equipment',
-      location: 'Hyderabad, Telangana',
-      rating: 4.8,
-      aiTags: ['Quality Guaranteed'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 12,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 23,
-      name: 'Global Surgical Glove Distributors',
-      category: 'Surgical Gloves & Instruments',
-      location: 'Chennai, Tamil Nadu',
-      rating: 4.6,
-      aiTags: ['Competitive Pricing'],
-      certificates: ['ISO 9001', 'NABL Accredited'],
-      yearsOfExperience: 8,
-      status: 'New Vendor'
-    },
-    {
-      id: 24,
-      name: 'ProTech Surgical Supplies',
-      category: 'Surgical Gloves - Nitrile & Latex',
-      location: 'Pune, Maharashtra',
-      rating: 4.9,
-      aiTags: ['Premium Quality'],
-      certificates: ['FDA Registered', 'ISO 13485'],
-      yearsOfExperience: 15,
-      status: 'Contacted'
-    },
-    {
-      id: 25,
-      name: 'SafeHands Medical Equipment',
-      category: 'Surgical Gloves Manufacturer',
-      location: 'Ahmedabad, Gujarat',
-      rating: 4.7,
-      aiTags: ['Custom Orders'],
-      certificates: ['ISO 13485', 'CE Certified'],
-      yearsOfExperience: 11,
-      status: 'Previously Ordered'
-    },
-    {
-      id: 26,
-      name: 'Elite Surgical Glove Corp',
-      category: 'Surgical Gloves & Safety Equipment',
-      location: 'Kolkata, West Bengal',
-      rating: 4.8,
-      aiTags: ['Quick Delivery'],
-      certificates: ['ISO 9001', 'GMP Certified'],
-      yearsOfExperience: 9,
-      status: 'New Vendor'
-    },
-  ];
-
-  // AI Recommended vendors (first 6 by default when no search)
-  const aiRecommendedVendors = allAvailableVendors.slice(0, 6);
-
-  // Filter vendors based on SUBMITTED search query (not typing in real-time)
-  const filteredVendors = submittedQuery
-    ? allAvailableVendors.filter(vendor => {
-      const query = submittedQuery.toLowerCase().trim();
-      const searchTerms = query.split(/\s+/); // Split by whitespace
-
-      const vendorText = [
-        vendor.name.toLowerCase(),
-        vendor.category.toLowerCase(),
-        vendor.location.toLowerCase()
-      ].join(' ');
-
-      // Check if ANY search term matches ANY part of the vendor text
-      return searchTerms.some(term =>
-        term.length > 0 && vendorText.includes(term)
-      );
-    })
-    : aiRecommendedVendors;
-
-  // Show vendors based on displayedCount (incremental loading)
-  const displayedVendors = filteredVendors.slice(0, displayedCount);
-
-  // Handle search submission (Enter key)
-  const handleSearch = () => {
-    if (searchQuery.trim().length > 0) {
-      setSubmittedQuery(searchQuery);
-      setDisplayedCount(6); // Reset to 6 when new search
-    }
-  };
-
-  // Handle load more vendors
-  const handleLoadMore = () => {
-    setIsLoadingMore(true);
-    // Simulate loading delay for smooth transition
-    setTimeout(() => {
-      setDisplayedCount(prev => prev + 6);
-      setIsLoadingMore(false);
-    }, 800);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
+    if (e.key === 'Enter') handleSearch();
   };
 
-  // Only update searchQuery as user types (don't filter yet)
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const renderVendorCard = (result: AIVendorResult) => {
+    const isInvited = invitedVendors.includes(result.vendor_id);
+    const isSelected = selectedVendors.includes(result.vendor_id);
+    const productsStr = result.products.join(', ');
+    const trustScore = Math.round(result.final_score * 100);
+
+    return (
+      <Card
+        key={result.vendor_id}
+        className={`bg-white transition-all cursor-pointer group border ${isInvited ? 'border-[#eeeff1] bg-white' : isSelected ? 'border-[#3B82F6] bg-blue-50' : 'border-[#eeeff1] hover:bg-gray-50'}`}
+        onClick={(e) => handleCardClick(result, e)}
+      >
+        <CardContent className="p-4 relative">
+          {isInvited ? (
+            <div className="absolute top-3 right-3 z-10">
+              <Badge className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 border-0">
+                Invite sent
+              </Badge>
+            </div>
+          ) : (
+            <div
+              className={`checkbox-area absolute top-3 right-3 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleVendorSelect(result.vendor_id);
+              }}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-[#3B82F6] border-[#3B82F6]' : 'bg-white border-gray-300'}`}>
+                {isSelected && (
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="pr-8">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                  {result.vendor_name}
+                </h3>
+              </div>
+            </div>
+            {result.source === 'internal' ? (
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-1">
+                  <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-sm font-bold text-green-600">{trustScore}%</span>
+                </div>
+                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-green-100 text-green-700">
+                  <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
+                  Verified
+                </Badge>
+              </div>
+            ) : (
+              <div className="mb-2">
+                 <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
+                    <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
+                    External
+                 </Badge>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+            {result.description && (
+              <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
+                {result.description}
+              </p>
+            )}
+
+            {result.certificates && result.certificates.length > 0 && result.source === 'internal' && (
+              <div className="flex flex-wrap gap-1 mb-3">
+                {result.certificates.map((cert, idx) => (
+                  <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0 leading-none font-medium">
+                    {cert}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {result.location && (
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
+                  </div>
+                )}
+                {result.estd && (
+                  <>
+                    {result.location && <span className="text-gray-300">•</span>}
+                    <span className="text-xs text-gray-600">
+                      {new Date().getFullYear() - result.estd}y
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {result.website && (
+                <a
+                  href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Visit site
+                </a>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -525,219 +408,130 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
         <p className="text-sm text-gray-500">Search and select vendors to invite for this RFP</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
         <button
           onClick={() => setActiveTab('search')}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'search'
-              ? 'text-[#3B82F6]'
-              : 'text-gray-600 hover:text-gray-900'
-            }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'search' ? 'text-[#3B82F6]' : 'text-gray-600 hover:text-gray-900'}`}
         >
           Search Vendors
-          {activeTab === 'search' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6]"></div>
-          )}
+          {activeTab === 'search' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6]"></div>}
         </button>
         <button
           onClick={() => setActiveTab('invited')}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'invited'
-              ? 'text-[#3B82F6]'
-              : 'text-gray-600 hover:text-gray-900'
-            }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'invited' ? 'text-[#3B82F6]' : 'text-gray-600 hover:text-gray-900'}`}
         >
-          Invited Vendors ({vendors.length})
-          {activeTab === 'invited' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6]"></div>
-          )}
+          Invited Vendors ({vendors.length + invitedVendors.length})
+          {activeTab === 'invited' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6]"></div>}
         </button>
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'search' ? (
         <div>
-          {/* Search Bar - Fixed/Sticky */}
-          <div className="mb-5">
-            <Input
-              placeholder="Search vendors or products here..."
-              className="w-full h-10 bg-white border border-[#eeeff1] text-sm"
-              value={searchQuery}
-              onChange={handleSearchChange}
-              onKeyDown={handleKeyDown}
-            />
+          <div className="mb-5 flex gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search vendors or products here..."
+                className="w-full h-10 bg-white border border-[#eeeff1] text-sm pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+            <Button onClick={handleSearch} className="h-10 bg-[#3B82F6] hover:bg-[#2563EB]">Search</Button>
           </div>
 
-          {/* Send Invite Button - Fixed/Sticky - Shows when vendors are selected */}
           {selectedVendors.length > 0 && (
             <div className="mb-5 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
               <span className="text-sm font-medium text-gray-900">
                 {selectedVendors.length} vendor{selectedVendors.length !== 1 ? 's' : ''} selected
               </span>
-              <Button
-                onClick={handleSendInvites}
-                className="bg-[#3B82F6] hover:bg-[#2563EB] h-9 px-4 text-sm"
-              >
+              <Button onClick={handleSendInvites} className="bg-[#3B82F6] hover:bg-[#2563EB] h-9 px-4 text-sm">
                 <Send className="w-4 h-4 mr-2" />
                 Send Invite{selectedVendors.length !== 1 ? 's' : ''}
               </Button>
             </div>
           )}
 
-          {/* Scrollable Vendor Cards Area */}
-          <div
-            className="overflow-y-auto hide-scrollbar"
-            style={{ maxHeight: 'calc(100vh - 400px)' }}
-          >
-            {/* Search Results Header or AI Recommended Vendors */}
-            <div>
-              {submittedQuery ? (
-                <div className="mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">{submittedQuery}</h3>
-                  <p className="text-sm text-gray-600">{filteredVendors.length} vendor{filteredVendors.length !== 1 ? 's' : ''}</p>
-                </div>
-              ) : (
+          <div className="overflow-y-auto hide-scrollbar pb-10" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+            {submittedQuery && (
+              <div className="mb-5">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{submittedQuery}</h3>
+                <p className="text-sm text-gray-600">{internalResults.length + externalResults.length} vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''} found</p>
+              </div>
+            )}
+
+            {isInternalLoading && (
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
+                    <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
+                    <div className="h-3 bg-gray-100 rounded w-full mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isInternalLoading && internalResults.length > 0 && (
+              <div className="mb-8">
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="w-4 h-4 text-[#3B82F6]" />
-                  <h3 className="text-sm font-semibold text-gray-900">AI Recommended Vendors</h3>
+                  <Shield className="w-4 h-4 text-green-600" />
+                  <h3 className="text-sm font-semibold text-gray-700">Verified Vendors</h3>
+                  <span className="text-xs text-gray-400">({internalResults.length})</span>
                 </div>
-              )}
+                <div className="grid grid-cols-2 gap-4">
+                  {internalResults.map(renderVendorCard)}
+                </div>
+              </div>
+            )}
 
-              {displayedVendors.length > 0 ? (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    {displayedVendors.map((vendor, index) => (
-                      <div
-                        key={vendor.id}
-                        onClick={(e) => handleCardClick(vendor, e)}
-                        className={`border rounded-lg p-4 transition-all duration-300 relative group animate-fadeIn ${invitedVendors.includes(vendor.id)
-                            ? 'border-[#eeeff1] bg-white cursor-pointer'
-                            : selectedVendors.includes(vendor.id)
-                              ? 'border-[#3B82F6] bg-blue-50 cursor-pointer'
-                              : 'border-[#eeeff1] hover:bg-gray-50 cursor-pointer'
-                          }`}
-                        style={{ animationDelay: `${index * 50}ms` }}
-                      >
-                        {/* Checkbox or Invite Sent Badge */}
-                        {invitedVendors.includes(vendor.id) ? (
-                          <div className="absolute top-3 right-3">
-                            <Badge className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 border-0">
-                              Invite sent
-                            </Badge>
-                          </div>
-                        ) : (
-                          <div
-                            className={`checkbox-area absolute top-3 right-3 transition-opacity ${selectedVendors.includes(vendor.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                              }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleVendorSelect(vendor.id);
-                            }}
-                          >
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${selectedVendors.includes(vendor.id)
-                                ? 'bg-[#3B82F6] border-[#3B82F6]'
-                                : 'bg-white border-gray-300'
-                              }`}>
-                              {selectedVendors.includes(vendor.id) && (
-                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Vendor Info */}
-                        <div className="pr-8">
-                          {/* Vendor Name & AI Tag */}
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-base font-semibold text-gray-900">{vendor.name}</h3>
-                            {vendor.aiTags && vendor.aiTags.length > 0 && (
-                              <Badge className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0">
-                                <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                                {vendor.aiTags[0]}
-                              </Badge>
-                            )}
-                          </div>
-
-                          {/* Product Category */}
-                          <p className="text-xs text-gray-600 mb-2">{vendor.category}</p>
-
-                          {/* Location */}
-                          <div className="flex items-center gap-1 mb-2">
-                            <MapPin className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">{vendor.location}</span>
-                          </div>
-
-                          {/* Years of Experience & Rating */}
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className="flex items-center gap-1">
-                              <Briefcase className="w-3 h-3 text-gray-400" />
-                              <span className="text-xs text-gray-600">{vendor.yearsOfExperience} years</span>
-                            </div>
-                            <span className="text-gray-300">•</span>
-                            <div className="flex items-center gap-1">
-                              <Star className="w-3 h-3 text-yellow-500" />
-                              <span className="text-xs text-gray-600">{vendor.rating}</span>
-                            </div>
-                          </div>
-
-                          {/* Certificates - Below ratings without icons */}
-                          {vendor.certificates && vendor.certificates.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {vendor.certificates.map((cert, idx) => (
-                                <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-700 border-0">
-                                  {cert}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+            {(externalResults.length > 0 || isExternalLoading) && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-gray-700">External Sources</h3>
+                    <span className="text-xs text-gray-400">({isExternalLoading ? 'AI searching...' : externalResults.length})</span>
+                  </div>
+                  {isExternalLoading && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Gemini is researching the web...
+                    </div>
+                  )}
+                </div>
+                
+                {isExternalLoading ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {[1, 2].map(i => (
+                      <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
+                        <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
+                        <div className="h-3 bg-gray-100 rounded w-full mb-2" />
                       </div>
                     ))}
                   </div>
-
-                  {/* Search more vendors button - Only show when user has searched and there are more results */}
-                  {submittedQuery && displayedCount < filteredVendors.length && (
-                    <div className="mt-6 flex justify-center">
-                      <Button
-                        onClick={handleLoadMore}
-                        variant="outline"
-                        className="h-10 px-6 border-[#eeeff1] hover:bg-gray-50 font-medium"
-                        disabled={isLoadingMore}
-                      >
-                        {isLoadingMore ? (
-                          <>
-                            <div className="w-4 h-4 mr-2 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
-                            Searching...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4 mr-2 text-[#3B82F6]" />
-                            Search more vendors
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Sparkles className="w-8 h-8 text-gray-400" />
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {externalResults.map(renderVendorCard)}
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No vendors found</h3>
-                  <p className="text-sm text-gray-500">Try adjusting your search terms</p>
+                )}
+              </div>
+            )}
+
+            {!isInternalLoading && !isExternalLoading && internalResults.length === 0 && externalResults.length === 0 && (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-gray-400" />
                 </div>
-              )}
-            </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No vendors found</h3>
+                <p className="text-sm text-gray-500">Try adjusting your search terms</p>
+              </div>
+            )}
           </div>
         </div>
       ) : (
-        <div
-          className="overflow-y-auto hide-scrollbar"
-          style={{ maxHeight: 'calc(100vh - 320px)' }}
-        >
-          {/* Invited Vendors Table */}
+        <div className="overflow-y-auto hide-scrollbar" style={{ maxHeight: 'calc(100vh - 320px)' }}>
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -752,26 +546,16 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               <tbody className="divide-y divide-gray-100">
                 {vendors.map((vendor) => (
                   <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-gray-900">{vendor.name}</span>
-                    </td>
+                    <td className="px-4 py-3"><span className="text-sm font-medium text-gray-900">{vendor.name}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Mail className="w-4 h-4 text-gray-400" />
                         <span className="text-sm text-gray-600">{vendor.email}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">{vendor.category}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className="bg-blue-50 text-[#3B82F6] border-0 text-xs px-2 py-0.5">
-                        Invited
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">{vendor.invitedAt}</span>
-                    </td>
+                    <td className="px-4 py-3"><span className="text-sm text-gray-600">{vendor.category}</span></td>
+                    <td className="px-4 py-3"><Badge className="bg-blue-50 text-[#3B82F6] border-0 text-xs px-2 py-0.5">Invited</Badge></td>
+                    <td className="px-4 py-3"><span className="text-sm text-gray-600">{vendor.invitedAt}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -780,28 +564,15 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
         </div>
       )}
 
-      {/* Side Panel for Vendor Portfolio */}
       {sidePanelOpen && selectedVendorForPanel && (
         <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 bg-black/50 z-[60]"
-            onClick={() => setSidePanelOpen(false)}
-          />
-
-          {/* Side Panel */}
+          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setSidePanelOpen(false)} />
           <div className="fixed top-0 right-0 h-full w-[480px] bg-white shadow-lg z-[70] overflow-y-auto">
-            {/* Header */}
             <div className="sticky top-0 bg-white border-b border-[#eeeff1] px-6 py-4">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-semibold text-gray-900">{selectedVendorForPanel.name}</h2>
-                <button
-                  onClick={() => setSidePanelOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                <button onClick={() => setSidePanelOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="flex flex-wrap gap-1">
@@ -814,106 +585,58 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               </div>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 space-y-6">
-              {/* Overview */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Company Overview</h3>
                 <div className="space-y-2">
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs text-gray-500 min-w-[100px]">Category</span>
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.category}</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs text-gray-500 min-w-[100px]">Location</span>
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.location}</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs text-gray-500 min-w-[100px]">Experience</span>
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.yearsOfExperience} years in business</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs text-gray-500 min-w-[100px]">Rating</span>
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.rating} ⭐</span>
-                  </div>
+                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Category</span><span className="text-xs text-gray-900">{selectedVendorForPanel.category}</span></div>
+                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Location</span><span className="text-xs text-gray-900">{selectedVendorForPanel.location}</span></div>
+                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Experience</span><span className="text-xs text-gray-900">{selectedVendorForPanel.yearsOfExperience} years in business</span></div>
+                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Rating</span><span className="text-xs text-gray-900">{selectedVendorForPanel.rating} ⭐</span></div>
                 </div>
               </div>
 
-              {/* Certifications */}
               {selectedVendorForPanel.certificates && selectedVendorForPanel.certificates.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Certifications</h3>
                   <div className="flex flex-wrap gap-2">
                     {selectedVendorForPanel.certificates.map((cert: string, idx: number) => (
-                      <Badge key={idx} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 border-0">
-                        {cert}
-                      </Badge>
+                      <Badge key={idx} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 border-0">{cert}</Badge>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Products & Services */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Products & Services</h3>
-                <p className="text-xs text-gray-600 mb-3">
-                  Specialized in {selectedVendorForPanel.category.toLowerCase()} with a focus on quality and reliability.
-                </p>
+                <p className="text-xs text-gray-600 mb-3">{selectedVendorForPanel.description || 'Specialized in ' + selectedVendorForPanel.category.toLowerCase() + ' with a focus on quality and reliability.'}</p>
                 <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-xs text-gray-900">High-quality medical-grade products</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-xs text-gray-900">FDA approved and certified</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-xs text-gray-900">Fast delivery across India</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-xs text-gray-900">24/7 customer support</span>
-                  </div>
+                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">High-quality medical-grade products</span></div>
+                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">FDA approved and certified</span></div>
+                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">Fast delivery across India</span></div>
+                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">24/7 customer support</span></div>
                 </div>
               </div>
 
-              {/* Key Metrics */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Key Performance Metrics</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-xs text-gray-500 mb-1">On-time Delivery</div>
-                    <div className="text-lg font-semibold text-gray-900">98%</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-xs text-gray-500 mb-1">Quality Score</div>
-                    <div className="text-lg font-semibold text-gray-900">4.8/5</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-xs text-gray-500 mb-1">Response Time</div>
-                    <div className="text-lg font-semibold text-gray-900">&lt; 4 hrs</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-xs text-gray-500 mb-1">Projects Completed</div>
-                    <div className="text-lg font-semibold text-gray-900">150+</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contact Information */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Contact Information</h3>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs text-gray-900">contact@{selectedVendorForPanel.name.toLowerCase().replace(/\s+/g, '')}.com</span>
+                    <span className="text-xs text-gray-900">{selectedVendorForPanel.contact_email || `contact@${selectedVendorForPanel.name.toLowerCase().replace(/\s+/g, '')}.com`}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs text-gray-900">+91 98765 43210</span>
+                    <span className="text-xs text-gray-900">{selectedVendorForPanel.mobile || '+91 98765 43210'}</span>
                   </div>
+                  {selectedVendorForPanel.website && (
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-gray-400" />
+                      <a href={selectedVendorForPanel.website.startsWith('http') ? selectedVendorForPanel.website : `https://${selectedVendorForPanel.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                        {selectedVendorForPanel.website}
+                      </a>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-gray-400" />
                     <span className="text-xs text-gray-900">{selectedVendorForPanel.location}</span>
@@ -922,21 +645,15 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               </div>
             </div>
 
-            {/* Footer Actions */}
             <div className="sticky bottom-0 bg-white border-t border-[#eeeff1] px-6 py-4">
               {invitedVendors.includes(selectedVendorForPanel.id) ? (
-                <Badge className="w-full text-center text-xs px-3 py-2 bg-green-50 text-green-700 border-0">
+                <Badge className="w-full justify-center text-center text-xs px-3 py-2 bg-green-50 text-green-700 border-0">
                   Invite sent
                 </Badge>
               ) : (
                 <Button
-                  onClick={() => {
-                    handleVendorSelect(selectedVendorForPanel.id);
-                  }}
-                  className={`w-full ${selectedVendors.includes(selectedVendorForPanel.id)
-                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      : 'bg-[#3B82F6] text-white hover:bg-[#2563EB]'
-                    }`}
+                  onClick={() => handleVendorSelect(selectedVendorForPanel.id)}
+                  className={`w-full ${selectedVendors.includes(selectedVendorForPanel.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-[#3B82F6] text-white hover:bg-[#2563EB]'}`}
                 >
                   {selectedVendors.includes(selectedVendorForPanel.id) ? 'Remove from Selection' : 'Add to Selection'}
                 </Button>
@@ -1351,8 +1068,8 @@ function QueriesPhase({ proposal }: { proposal: any }) {
                 key={query.id}
                 onClick={() => setSelectedQuery(query)}
                 className={`w-full text-left p-4 transition-colors relative ${selectedQuery?.id === query.id
-                    ? 'bg-blue-50 border-l-2 border-[#3B82F6]'
-                    : 'hover:bg-gray-50'
+                  ? 'bg-blue-50 border-l-2 border-[#3B82F6]'
+                  : 'hover:bg-gray-50'
                   }`}
               >
                 {query.status === 'pending' && (
@@ -2730,8 +2447,8 @@ function NegotiationsPhase({ proposal }: { proposal: any }) {
         <button
           onClick={() => setActiveTab('voice')}
           className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'voice'
-              ? 'text-gray-900'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'text-gray-900'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <div className="flex items-center gap-2">
@@ -2745,8 +2462,8 @@ function NegotiationsPhase({ proposal }: { proposal: any }) {
         <button
           onClick={() => setActiveTab('email')}
           className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'email'
-              ? 'text-gray-900'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'text-gray-900'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <div className="flex items-center gap-2">
@@ -2769,8 +2486,8 @@ function NegotiationsPhase({ proposal }: { proposal: any }) {
                 key={call.id}
                 onClick={() => setSelectedVoiceCall(call)}
                 className={`w-full text-left p-4 rounded-lg transition-all border ${selectedVoiceCall.id === call.id
-                    ? 'bg-white border-[#3B82F6] shadow-sm'
-                    : 'bg-white border-gray-200 hover:border-gray-300'
+                  ? 'bg-white border-[#3B82F6] shadow-sm'
+                  : 'bg-white border-gray-200 hover:border-gray-300'
                   }`}
               >
                 <div className="flex items-center gap-2 mb-2">
@@ -2780,8 +2497,8 @@ function NegotiationsPhase({ proposal }: { proposal: any }) {
                 <p className="text-xs text-gray-500 mb-2">{call.callDate}</p>
                 <div className="flex items-center gap-2">
                   <Badge className={`text-xs px-2 py-0.5 border-0 ${call.status === 'active'
-                      ? 'bg-orange-50 text-orange-700'
-                      : 'bg-gray-100 text-gray-700'
+                    ? 'bg-orange-50 text-orange-700'
+                    : 'bg-gray-100 text-gray-700'
                     }`}>
                     {call.outcome}
                   </Badge>

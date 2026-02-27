@@ -66,6 +66,7 @@ class RFPPublishRequest(BaseModel):
     project_id: str
     project_name: str
     rfp_data: dict
+    company_logo_url: Optional[str] = None
 
 
 class RFPPublishResponse(BaseModel):

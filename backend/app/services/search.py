@@ -1,13 +1,34 @@
 import os
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel, Field
+from typing import List, Optional
 from google import genai
-from google.genai import types
 from app.core.config import settings
 from app.services.documents import (
     generate_embedding,
     _get_opensearch_client,
     VENDOR_INDEX_NAME,
 )
-import json
+
+
+class GeminiVendor(BaseModel):
+    vendor_name: str = Field(description="Name of the manufacturer")
+    website: Optional[str] = Field(None, description="Their official website URL")
+    description: Optional[str] = Field(
+        None, description="2-sentence summary of what they do"
+    )
+    location: Optional[str] = Field(None, description="Their full city and state")
+    products: Optional[List[str]] = Field(
+        default_factory=list, description="List of core products"
+    )
+    contact_email: Optional[str] = Field(None, description="email or empty string")
+    mobile: Optional[str] = Field(None, description="mobile number or empty string")
+    estd: Optional[int] = Field(None, description="establishment year or null")
+
+
+class GeminiVendorList(BaseModel):
+    vendors: List[GeminiVendor] = Field(description="List of vendor results")
 
 
 def get_gemini_client() -> genai.Client:
@@ -231,6 +252,9 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
         kw_score = norm_kw.get(vid, 0.0)
         final_score = kw_weight * kw_score + vec_weight * vec_score
 
+        if final_score < settings.VENDOR_SEARCH_INTERNAL_THRESHOLD:
+            continue
+
         source = (vector_hits.get(vid) or keyword_hits[vid])["source"]
 
         # Build the certificates list from two sources:
@@ -287,64 +311,59 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
 
 async def search_gemini_vendors(query: str, num_results: int = 5) -> list[dict]:
     """
-    Search for external vendors using Gemini Search and structured output.
+    Search for external vendors using Gemini Search and structured output via Langchain.
     """
     try:
-        client = get_gemini_client()
+        api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("[search] GEMINI_API_KEY not configured. Skipping Gemini Search.")
+            return []
+
+        llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            temperature=0,
+            api_key=api_key,
+        )
+        # Force structured output directly from Gemini
+        structured_llm = llm.with_structured_output(schema=GeminiVendorList)
+
         prompt = f"""
         Find {num_results} actual {query}. 
-        Use Google Search to find their details. Do NOT return directory sites like Indiamart or Justdial.
-        
-        Return STRICTLY a JSON array of objects. Do not include any markdown formatting like ```json.
-        Each object must have these exactly matching string keys:
-        - "vendor_name": "Name of the manufacturer"
-        - "website": "Their official website URL"
-        - "description": "A 2-sentence summary of what they do"
-        - "location": "Their full city and state"
-        - "products": ["list", "of", "products"]
-        - "contact_email": "email" or empty string
-        - "mobile": "mobile number" or empty string
-        - "estd": establishment year as integer or null
+        Use your internal knowledge and search to find their details. Do NOT return directory sites like Indiamart or Justdial.
         """
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}],
-            ),
-        )
 
-        content = response.text.strip()
-        if content.startswith("```json"):
-            content = content[7:-3]
-        elif content.startswith("```"):
-            content = content[3:-3]
+        response = structured_llm.invoke(prompt)
 
-        vendors_data = json.loads(content)
+        if not response or not response.vendors:
+            print("[search] Gemini returned empty structured response")
+            return []
 
         results = []
-        for i, v in enumerate(vendors_data):
+        for i, v in enumerate(response.vendors):
             results.append(
                 {
                     "vendor_id": f"gemini_{i}",
-                    "vendor_name": v.get("vendor_name", ""),
+                    "vendor_name": v.vendor_name,
                     "source": "external",
-                    "description": v.get("description", ""),
-                    "location": v.get("location", ""),
-                    "products": v.get("products", []),
+                    "description": v.description or "",
+                    "location": v.location or "",
+                    "products": v.products or [],
                     "certificates": [],
                     "certificate_details": [],
-                    "website": v.get("website", ""),
-                    "contact_email": v.get("contact_email", ""),
-                    "mobile": v.get("mobile", ""),
-                    "estd": v.get("estd", None),
+                    "website": v.website or "",
+                    "contact_email": v.contact_email or "",
+                    "mobile": v.mobile or "",
+                    "estd": v.estd,
                     "final_score": round(0.9 - (i * 0.05), 4),
                     "keyword_score": 0.0,
                     "vector_score": 0.0,
                 }
             )
-        print(f"[search] Gemini phase: {len(results)} hits")
+        print(f"[search] Gemini phase: {len(results)} structured hits")
         return results
     except Exception as e:
-        print(f"[search] Gemini phase failed: {e}")
+        import traceback
+
+        print(f"[search] Gemini phase structured json compilation failed: {e}")
+        traceback.print_exc()
         return []
