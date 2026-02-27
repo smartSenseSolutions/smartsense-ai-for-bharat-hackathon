@@ -154,6 +154,73 @@ def ensure_opensearch_index():
         print(f"⚠ Could not ensure OpenSearch index: {e}")
 
 
+def rebuild_vendor_index() -> dict:
+    """
+    Drop the vendors index (if it exists) and recreate it with the correct
+    knn_vector mapping for the embedding field.
+
+    Returns a summary dict with 'deleted' and 'created' booleans.
+    """
+    client = _get_opensearch_client()
+    deleted = False
+    created = False
+
+    if client.indices.exists(index=VENDOR_INDEX_NAME):
+        client.indices.delete(index=VENDOR_INDEX_NAME)
+        print(f"✓ Deleted OpenSearch index: {VENDOR_INDEX_NAME}")
+        deleted = True
+
+    vendor_mapping = {
+        "settings": {
+            "index": {
+                "knn": True,
+            }
+        },
+        "mappings": {
+            "properties": {
+                "vendor_id": {"type": "keyword"},
+                "vendor_name": {"type": "text"},
+                "location": {"type": "text"},
+                "estd": {"type": "integer"},
+                "mobile": {"type": "text"},
+                "contact_email": {"type": "keyword"},
+                "website": {"type": "keyword"},
+                "products": {"type": "text"},
+                "certificates": {"type": "text"},
+                # certificate_details is an array of objects extracted from
+                # vendor documents.  Dates are stored as keyword so that
+                # empty strings don't trigger date-parsing errors.
+                "certificate_details": {
+                    "type": "object",
+                    "properties": {
+                        "document_type": {"type": "keyword"},
+                        "document_summary": {"type": "text"},
+                        "issuing_authority": {"type": "text"},
+                        "issued_to": {"type": "text"},
+                        "issue_date": {"type": "keyword"},
+                        "expiry_date": {"type": "keyword"},
+                        "document_url": {"type": "keyword"},
+                    },
+                },
+                "embedding": {
+                    "type": "knn_vector",
+                    "dimension": 1024,
+                    "method": {
+                        "name": "hnsw",
+                        "space_type": "cosinesimil",
+                        "engine": "faiss",
+                    },
+                },
+            }
+        },
+    }
+    client.indices.create(index=VENDOR_INDEX_NAME, body=vendor_mapping)
+    print(f"✓ Created OpenSearch index: {VENDOR_INDEX_NAME}")
+    created = True
+
+    return {"deleted": deleted, "created": created}
+
+
 # ---------------------------------------------------------------------------
 # Document download
 # ---------------------------------------------------------------------------

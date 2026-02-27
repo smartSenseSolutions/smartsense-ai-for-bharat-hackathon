@@ -308,10 +308,20 @@ def index_vendor_to_opensearch(vendor: Vendor, certificate_details: list[dict] =
             "certificates": vendor.certificates or [],
         }
 
+        # Sanitize date fields in certificate_details: empty strings must
+        # be null so OpenSearch doesn't try to parse them as dates.
+        sanitized_certs = []
+        for cert in certificate_details:
+            c = dict(cert)
+            for date_field in ("issue_date", "expiry_date"):
+                if c.get(date_field) == "":
+                    c[date_field] = None
+            sanitized_certs.append(c)
+
         body = {
             "vendor_id": vendor.id,
             "embedding": embedding,
-            "certificate_details": certificate_details,
+            "certificate_details": sanitized_certs,
             **metadata,
         }
 
@@ -338,6 +348,67 @@ def create_vendor(db: Session, data: dict) -> Vendor:
     db.refresh(vendor)
     index_vendor_to_opensearch(vendor)
     return vendor
+
+
+def reindex_all_vendors(db: Session) -> dict:
+    """
+    Rebuild the vendors OpenSearch index from scratch and re-index every
+    vendor currently stored in the database.
+
+    Steps:
+    1. Drop + recreate the index with correct knn_vector mapping.
+    2. For each vendor, rebuild the embed text (including certificate details
+       from their associated VendorDocument rows) and push to OpenSearch.
+
+    Returns a summary dict: {index_rebuilt, total, succeeded, failed}.
+    """
+    from app.services.documents import rebuild_vendor_index
+
+    # Step 1: rebuild index
+    rebuild_vendor_index()
+
+    # Step 2: re-index vendors
+    vendors = db.query(Vendor).all()
+    succeeded = 0
+    failed = 0
+
+    for vendor in vendors:
+        try:
+            # Gather certificate details from processed documents
+            docs = (
+                db.query(VendorDocument)
+                .filter(
+                    VendorDocument.vendor_id == vendor.id,
+                    VendorDocument.processing_status == "completed",
+                )
+                .all()
+            )
+            certificate_details = [
+                {
+                    "document_type": d.document_type or "",
+                    "document_summary": d.document_summary or "",
+                    "issuing_authority": d.issuing_authority or "",
+                    "issued_to": d.issued_to or "",
+                    # Use None (→ null) for dates so empty strings don't
+                    # trigger OpenSearch date-parsing errors.
+                    "issue_date": d.issue_date or None,
+                    "expiry_date": d.expiry_date or None,
+                    "document_url": d.document_url or "",
+                }
+                for d in docs
+            ]
+            index_vendor_to_opensearch(vendor, certificate_details)
+            succeeded += 1
+        except Exception as e:
+            print(f"⚠ Failed to re-index vendor {vendor.name}: {e}")
+            failed += 1
+
+    return {
+        "index_rebuilt": True,
+        "total": len(vendors),
+        "succeeded": succeeded,
+        "failed": failed,
+    }
 
 
 def list_vendors(db: Session, skip: int = 0, limit: int = 100) -> list[Vendor]:

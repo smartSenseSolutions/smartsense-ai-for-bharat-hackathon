@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     SUPERUSER_EMAIL: str = "admin@example.com"
     SUPERUSER_PASSWORD: str = "changeme"
 
+    # Vendor smart search settings
+    VENDOR_SEARCH_TOP_N: int = 3  # number of top internal vendors to return
+    VENDOR_SEARCH_EXTERNAL_N: int = 3  # number of Exa external vendors to return
+    VENDOR_SEARCH_KEYWORD_WEIGHT: float = 0.4  # weight for BM25 keyword score
+    VENDOR_SEARCH_VECTOR_WEIGHT: float = 0.6  # weight for kNN vector score
+    VENDOR_SEARCH_CANDIDATE_MULTIPLIER: int = 10  # fetch top_n * multiplier candidates per phase
+
     # Nylas Email Integration
     NYLAS_API_KEY: Optional[str] = None
     NYLAS_GRANT_ID: Optional[str] = None

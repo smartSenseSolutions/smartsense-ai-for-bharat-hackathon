@@ -15,6 +15,7 @@ from app.services.vendors import (
     list_vendors,
     get_vendor,
     get_csv_template,
+    reindex_all_vendors,
 )
 from app.services.rfp import get_bedrock_client
 
@@ -90,6 +91,21 @@ async def bulk_upload_vendors(
 # ---------------------------------------------------------------------------
 # AI features
 # ---------------------------------------------------------------------------
+
+
+@router.post("/reindex")
+def reindex_vendors_endpoint(db: Session = Depends(get_db)):
+    """
+    Admin: drop and recreate the vendors OpenSearch index with the correct
+    knn_vector mapping, then re-index every vendor from the database.
+
+    Use this once after initial setup or whenever the index mapping changes.
+    """
+    try:
+        result = reindex_all_vendors(db)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reindex failed: {e}")
 
 
 @router.post("/verify-certification")
