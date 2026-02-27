@@ -116,7 +116,7 @@ def _split_field(value: str) -> list[str]:
     return [item.strip() for item in value.split(";") if item.strip()]
 
 
-def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
+async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
     """
     Parse CSV bytes and upsert Vendor rows (matched by vendor_name).
 
@@ -149,7 +149,16 @@ def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
                 estd = int(estd_raw) if estd_raw else None
 
                 certs_raw = (row.get("certificates") or "").strip()
-                certs = _split_field(certs_raw) if certs_raw else []
+                certs_list = _split_field(certs_raw) if certs_raw else []
+
+                certs = []
+                doc_links = []
+
+                for c in certs_list:
+                    if c.startswith("http://") or c.startswith("https://"):
+                        doc_links.append(c)
+                    else:
+                        certs.append(c)
 
                 products_raw = (row.get("products") or "").strip()
                 products = _split_field(products_raw) if products_raw else []
@@ -182,22 +191,64 @@ def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
                     db.flush()
                     created += 1
 
-                # Index into vector db
-                index_vendor_to_opensearch(vendor)
+                certificate_details = []
 
-                # Parse document_links and create VendorDocument rows
-                doc_links_raw = (row.get("document_links") or "").strip()
-                if doc_links_raw:
-                    doc_links = _split_field(doc_links_raw)
+                # Process document links
+                if doc_links:
+                    from app.services.documents import (
+                        download_document,
+                        _guess_filename,
+                        extract_and_summarize,
+                    )
+
                     for link in doc_links:
                         doc = VendorDocument(
                             id=str(uuid.uuid4()),
                             vendor_id=vendor.id,
                             document_url=link,
-                            processing_status="pending",
+                            processing_status="completed",
                         )
                         db.add(doc)
                         documents_queued += 1
+
+                        try:
+                            print(f"DEBUG: Processing document link: {link}")
+                            doc_bytes = await download_document(link)
+                            print(
+                                f"DEBUG: Downloaded {len(doc_bytes)} bytes from {link}"
+                            )
+
+                            filename = _guess_filename(link)
+                            print(f"DEBUG: Guessed filename: {filename}")
+
+                            summary = await extract_and_summarize(doc_bytes, filename)
+                            print(
+                                f"DEBUG: Extracted summary: {json.dumps(summary, indent=2)}"
+                            )
+
+                            summary["document_url"] = link
+                            certificate_details.append(summary)
+
+                            doc.document_name = summary.get("document_name")
+                            doc.issued_to = summary.get("issued_to")
+                            doc.issuing_authority = summary.get("issuing_authority")
+                            doc.issue_date = summary.get("issue_date")
+                            doc.expiry_date = summary.get("expiry_date")
+                            doc.document_summary = summary.get("document_summary")
+                            doc.document_type = summary.get("document_type", "Others")
+                        except Exception as e:
+                            import traceback
+
+                            print(f"Failed to process {link}: {e}")
+                            traceback.print_exc()
+                            doc.processing_status = "failed"
+                            doc.error_message = str(e)
+
+                print(
+                    f"DEBUG: Appended {len(certificate_details)} certificates to details for vendor '{vendor.name}'."
+                )
+                # Index into vector db
+                index_vendor_to_opensearch(vendor, certificate_details)
         except Exception as exc:
             failed += 1
             errors.append({"row": i, "error": str(exc)})
@@ -213,8 +264,10 @@ def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
     }
 
 
-def index_vendor_to_opensearch(vendor: Vendor):
+def index_vendor_to_opensearch(vendor: Vendor, certificate_details: list[dict] = None):
     """Generate embedding and index vendor details into OpenSearch."""
+    if certificate_details is None:
+        certificate_details = []
     try:
         from app.services.documents import (
             generate_embedding,
@@ -236,6 +289,11 @@ def index_vendor_to_opensearch(vendor: Vendor):
             f"Website: {vendor.website or ''}\n"
         )
 
+        if certificate_details:
+            embed_text += "Certificate Details:\n"
+            for cert in certificate_details:
+                embed_text += f"- {cert.get('document_type', 'Document')}: {cert.get('document_summary', '')}\n"
+
         embedding = generate_embedding(embed_text)
 
         metadata = {
@@ -253,6 +311,7 @@ def index_vendor_to_opensearch(vendor: Vendor):
         body = {
             "vendor_id": vendor.id,
             "embedding": embedding,
+            "certificate_details": certificate_details,
             **metadata,
         }
 

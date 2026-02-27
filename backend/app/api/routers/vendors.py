@@ -83,7 +83,7 @@ async def bulk_upload_vendors(
         raise HTTPException(status_code=400, detail="Only .csv files are accepted")
 
     contents = await file.read()
-    result = bulk_create_vendors(db, contents)
+    result = await bulk_create_vendors(db, contents)
     return result
 
 
