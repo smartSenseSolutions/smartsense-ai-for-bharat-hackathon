@@ -73,12 +73,12 @@ export function AIRFPCreator({ projectName, onBack, onSendForApproval }: AIRFPCr
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      
+
       if (aiResponse.rfpData) {
         setRfpData(aiResponse.rfpData);
         setRfpGenerated(true);
       }
-      
+
       setIsGenerating(false);
     }, 1500);
   };
@@ -175,11 +175,10 @@ export function AIRFPCreator({ projectName, onBack, onSendForApproval }: AIRFPCr
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                  message.role === 'user'
+                className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.role === 'user'
                     ? 'bg-[#3B82F6] text-white'
                     : 'bg-[#F3F4F6] text-gray-900'
-                }`}
+                  }`}
               >
                 {message.role === 'assistant' && (
                   <div className="flex items-center gap-2 mb-2">
@@ -300,13 +299,13 @@ export function AIRFPCreator({ projectName, onBack, onSendForApproval }: AIRFPCr
                 </div>
               </div>
 
-              {/* Send for Approval Button */}
+              {/* Publish RFP Button */}
               <div className="pt-6 border-t border-gray-100">
                 <Button
                   onClick={() => onSendForApproval({ projectName, ...rfpData })}
                   className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB]"
                 >
-                  Send for Approval
+                  Publish RFP
                 </Button>
               </div>
             </div>

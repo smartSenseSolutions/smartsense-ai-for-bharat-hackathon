@@ -101,3 +101,4 @@ CLAUDE.md
 
 # Package Manager Lock Files
 package-lock.json
+tests/

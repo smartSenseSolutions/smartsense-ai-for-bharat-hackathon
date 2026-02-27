@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     )
 
     OPENSEARCH_URL: Optional[str] = None
+    OPENSEARCH_USER: Optional[str] = None
+    OPENSEARCH_PASSWORD: Optional[str] = None
     OPENSEARCH_INDEX: str = "vendor-documents"
+    VENDOR_INDEX_NAME: str = "vendors"
 
     S3_BUCKET_NAME: Optional[str] = None
+    S3_RFP_BUCKET: Optional[str] = None  # bucket for published RFP PDFs
+    S3_RFP_BUCKET_REGION: Optional[str] = None  # region override for the RFP bucket
 
     # Bedrock model IDs
     BEDROCK_MODEL_ID: str = "anthropic.claude-3-haiku-20240307-v1:0"
@@ -29,6 +34,12 @@ class Settings(BaseSettings):
 
     SUPERUSER_EMAIL: str = "admin@example.com"
     SUPERUSER_PASSWORD: str = "changeme"
+
+    # Nylas Email Integration
+    NYLAS_API_KEY: Optional[str] = None
+    NYLAS_GRANT_ID: Optional[str] = None
+    NYLAS_API_URI: str = "https://api.us.nylas.com"
+    NYLAS_WEBHOOK_SECRET: Optional[str] = None
 
     class Config:
         env_file = ".env"

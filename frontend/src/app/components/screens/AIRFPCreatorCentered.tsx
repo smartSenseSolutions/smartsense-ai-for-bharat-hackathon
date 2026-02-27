@@ -9,7 +9,9 @@ import { jwtDecode } from 'jwt-decode';
 interface AIRFPCreatorCenteredProps {
   onBack: () => void;
   onSendForApproval: (rfpData: any) => void;
+  onSaveAsDraft?: (rfpData: any) => void;
   projectName?: string;
+  initialRfpData?: any;
 }
 
 interface Message {
@@ -18,6 +20,17 @@ interface Message {
   content: string;
   timestamp: Date;
 }
+
+const renderMarkdownMsg = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
 
 const EditorInput = ({ value, onChange, multiline = false, className = "", richText = false }: { value: string, onChange: (val: string) => void, multiline?: boolean, className?: string, richText?: boolean }) => {
   const elementRef = useRef<HTMLDivElement>(null);
@@ -50,22 +63,33 @@ const EditorInput = ({ value, onChange, multiline = false, className = "", richT
   );
 };
 
-export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: initialProjectName = '' }: AIRFPCreatorCenteredProps) {
+export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft, projectName: initialProjectName = '', initialRfpData }: AIRFPCreatorCenteredProps) {
   const [projectName, setProjectName] = useState(initialProjectName);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: `Hi! I'm here to help you create an RFP. Please describe what you need. For example: \"Create proposal for Surgical Gloves of 10,000 pairs with sterile packaging\"`,
+      content: initialRfpData ? `Welcome back! You can continue editing your draft RFP for **${initialProjectName}**.` : `Hi! I'm here to help you create an RFP. Please describe what you need. For example: \"Create proposal for Surgical Gloves of 10,000 pairs with sterile packaging\"`,
       timestamp: new Date(),
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [rfpGenerated, setRfpGenerated] = useState(false);
+  const [rfpGenerated, setRfpGenerated] = useState(() => {
+    // If we have initial data with a documented title/number, consider it generated
+    if (initialRfpData && typeof initialRfpData === 'object' && Object.keys(initialRfpData).length > 0) {
+      if (initialRfpData.specifications && initialRfpData.specifications.length > 0) {
+        return true;
+      }
+    }
+    return false;
+  });
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pageNumbers, setPageNumbers] = useState<Record<number, number>>({});
+
 
   // Animation states
   const [isAnimating, setIsAnimating] = useState(false);
@@ -81,25 +105,64 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
   });
 
   // RFP Canvas State
-  const [rfpData, setRfpData] = useState({
-    documentTitle: 'REQUEST FOR PROPOSAL',
-    documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
-    documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    executiveSummary: 'This Request for Proposal (RFP) is issued to solicit proposals from qualified suppliers for the procurement of {productName}. The objective is to establish a partnership with a reliable vendor who can provide high-quality products that meet our stringent specifications and delivery requirements.',
-    productName: '',
-    quantity: '',
-    specifications: [] as string[],
-    deliveryTimeline: '',
-    budget: '',
-    qualityStandards: [] as string[],
-    scopeOfWork: [] as string[],
-    submissionRequirements: [] as string[],
-    evaluationCriteria: [] as { name: string, weight: string }[],
-    termsAndConditions: [] as { title: string, description: string }[],
-    rfpDeadline: '',
+  const [rfpData, setRfpData] = useState(() => {
+    if (initialRfpData && typeof initialRfpData === 'object' && Object.keys(initialRfpData).length > 0) {
+      if (initialRfpData.specifications && initialRfpData.specifications.length > 0) {
+        return initialRfpData;
+      }
+    }
+    return {
+      documentTitle: 'REQUEST FOR PROPOSAL',
+      documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      executiveSummary: 'This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of {productName}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.',
+      productName: '',
+      quantity: '',
+      specifications: [] as string[],
+      deliveryTimeline: '',
+      budget: '',
+      qualityStandards: [] as string[],
+      scopeOfWork: [] as string[],
+      submissionRequirements: [] as string[],
+      evaluationCriteria: [] as { name: string, weight: string }[],
+      termsAndConditions: [] as { title: string, description: string }[],
+      rfpDeadline: '',
+      costBornByRespondents: 'All expenses incurred by Respondents in any way associated with the development, preparation and submission of a response including but not limited to attendance at meetings, discussions, etc. and providing any additional information required by [Company], will be borne entirely and, exclusively by the Respondent.',
+      changesInScope: 'During the response period, [Company] reserves the right to change, add to or delete any part of this RFI. Additions, deletions, or modifications to the original tender could result in tender additions, which will become an integral part of the scope and tender response. HM reserves the right to award a contract for services that is less than those services specified in the scope.',
+      clarificationOfSubmissions: '[Company] may, at its sole discretion, seek clarification from any Respondent regarding response information and may do so without notification to any other Respondent. [Company] reserves the right to engage in discussion or negotiation with any Respondent (or simultaneously with more than one Respondent) after the tender closes to improve or clarify any response.',
+    };
   });
 
   const [userEmail, setUserEmail] = useState('procurement@company.com');
+
+  useEffect(() => {
+    if (!rfpGenerated || !containerRef.current) return;
+
+    const calculatePages = () => {
+      if (!containerRef.current) return;
+      const newPages: Record<number, number> = {};
+      const containerTop = containerRef.current.offsetTop;
+      const PAGE_HEIGHT = 1056; // Standard A4 height approximation
+
+      for (let i = 1; i <= 11; i++) {
+        const el = document.getElementById(`section-${i}`);
+        if (el) {
+          const offsetTop = el.offsetTop - containerTop;
+          newPages[i] = Math.max(2, Math.floor(offsetTop / PAGE_HEIGHT) + 2);
+        }
+      }
+      setPageNumbers(newPages);
+    };
+
+    calculatePages();
+
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(calculatePages);
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [rfpGenerated, rfpData, visibleSections]);
 
   useEffect(() => {
     try {
@@ -135,7 +198,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
       setVisibleSections([]);
 
       // Sequentially reveal sections with delay
-      const sections = 9; // Total number of sections
+      const sections = 13; // Total number of sections
       for (let i = 0; i < sections; i++) {
         setTimeout(() => {
           setVisibleSections(prev => [...prev, i]);
@@ -195,7 +258,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
           documentTitle: 'REQUEST FOR PROPOSAL',
           documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
           documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          executiveSummary: `This Request for Proposal (RFP) is issued to solicit proposals from qualified suppliers for the procurement of ${data.rfp_data.productName || 'products'}. The objective is to establish a partnership with a reliable vendor who can provide high-quality products that meet our stringent specifications and delivery requirements.`,
+          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${data.rfp_data.productName || 'products'}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
           productName: data.rfp_data.productName || '',
           quantity: data.rfp_data.quantity || '',
           deliveryTimeline: data.rfp_data.deliveryTimeline || '',
@@ -228,6 +291,9 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
             { title: 'Proposal Validity', description: '90 days from submission date' }
           ],
           rfpDeadline: data.rfp_data.rfpDeadline || '',
+          costBornByRespondents: data.rfp_data.costBornByRespondents || 'All expenses incurred by Respondents in any way associated with the development, preparation and submission of a response including but not limited to attendance at meetings, discussions, etc. and providing any additional information required by [Company], will be borne entirely and, exclusively by the Respondent.',
+          changesInScope: data.rfp_data.changesInScope || 'During the response period, [Company] reserves the right to change, add to or delete any part of this RFI. Additions, deletions, or modifications to the original tender could result in tender additions, which will become an integral part of the scope and tender response. HM reserves the right to award a contract for services that is less than those services specified in the scope.',
+          clarificationOfSubmissions: data.rfp_data.clarificationOfSubmissions || '[Company] may, at its sole discretion, seek clarification from any Respondent regarding response information and may do so without notification to any other Respondent. [Company] reserves the right to engage in discussion or negotiation with any Respondent (or simultaneously with more than one Respondent) after the tender closes to improve or clarify any response.',
         });
         setRfpGenerated(true);
         setCollectedInfo({
@@ -253,7 +319,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
           documentTitle: 'REQUEST FOR PROPOSAL',
           documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
           documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          executiveSummary: `This Request for Proposal (RFP) is issued to solicit proposals from qualified suppliers for the procurement of ${aiResponse.rfpData.productName || 'products'}. The objective is to establish a partnership with a reliable vendor who can provide high-quality products that meet our stringent specifications and delivery requirements.`,
+          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${aiResponse.rfpData.productName || 'products'}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
           ...aiResponse.rfpData
         });
         setRfpGenerated(true);
@@ -476,7 +542,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                         : 'bg-[#F3F4F6] text-gray-900'
                         }`}
                     >
-                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{renderMarkdownMsg(message.content)}</p>
                     </div>
                   </div>
                 ))}
@@ -608,7 +674,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
               </div>
             ) : (
               <div className="p-6">
-                <div className="max-w-4xl mx-auto bg-white p-16">
+                <div className="max-w-4xl mx-auto bg-white p-16" ref={containerRef}>
                   {/* RFP Header - Minimal & Professional */}
                   <div className="mb-12 pb-8 border-b border-gray-300">
                     <div className="flex justify-between items-start">
@@ -651,8 +717,26 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                     />
                   </div>
 
+                  {/* Table of Contents */}
+                  <div className={`mb-12 bg-gray-50 p-6 rounded-xl border border-gray-100 ${visibleSections.includes(1) ? 'animate-slide-in' : 'section-hidden'}`}>
+                    <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Table of Contents</h2>
+                    <div className="space-y-2 text-sm text-gray-600 font-medium pb-2">
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-1')?.scrollIntoView({ behavior: 'smooth' })}><span>1. Product Requirements</span><span className="text-gray-400 font-normal">{pageNumbers[1] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-2')?.scrollIntoView({ behavior: 'smooth' })}><span>2. Technical Specifications</span><span className="text-gray-400 font-normal">{pageNumbers[2] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-3')?.scrollIntoView({ behavior: 'smooth' })}><span>3. Quality Standards & Compliance</span><span className="text-gray-400 font-normal">{pageNumbers[3] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-4')?.scrollIntoView({ behavior: 'smooth' })}><span>4. Scope of Work</span><span className="text-gray-400 font-normal">{pageNumbers[4] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-5')?.scrollIntoView({ behavior: 'smooth' })}><span>5. Proposal Submission Requirements</span><span className="text-gray-400 font-normal">{pageNumbers[5] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-6')?.scrollIntoView({ behavior: 'smooth' })}><span>6. Evaluation Criteria</span><span className="text-gray-400 font-normal">{pageNumbers[6] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-7')?.scrollIntoView({ behavior: 'smooth' })}><span>7. Terms & Conditions</span><span className="text-gray-400 font-normal">{pageNumbers[7] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-8')?.scrollIntoView({ behavior: 'smooth' })}><span>8. Cost Born By Respondents</span><span className="text-gray-400 font-normal">{pageNumbers[8] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-9')?.scrollIntoView({ behavior: 'smooth' })}><span>9. Changes in Scope</span><span className="text-gray-400 font-normal">{pageNumbers[9] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-10')?.scrollIntoView({ behavior: 'smooth' })}><span>10. Clarification of Submissions</span><span className="text-gray-400 font-normal">{pageNumbers[10] || '-'}</span></div>
+                      <div className="flex justify-between hover:text-blue-600 cursor-pointer transition-colors" onClick={() => document.getElementById('section-11')?.scrollIntoView({ behavior: 'smooth' })}><span>11. Contact Information</span><span className="text-gray-400 font-normal">{pageNumbers[11] || '-'}</span></div>
+                    </div>
+                  </div>
+
                   {/* Product Details - Clean Grid */}
-                  <div className={`mb-12 ${visibleSections.includes(1) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-1" className={`mb-12 ${visibleSections.includes(2) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">1. Product Requirements</h2>
                     <div className="space-y-2">
                       <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
@@ -675,7 +759,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                   </div>
 
                   {/* Technical Specifications - Minimal List */}
-                  <div className={`mb-12 ${visibleSections.includes(2) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-2" className={`mb-12 ${visibleSections.includes(3) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">2. Technical Specifications</h2>
                     <div className="space-y-4">
                       {rfpData.specifications.map((spec, index) => (
@@ -713,7 +797,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                   </div>
 
                   {/* Quality Standards - Clean Format */}
-                  <div className={`mb-12 ${visibleSections.includes(3) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-3" className={`mb-12 ${visibleSections.includes(4) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">3. Quality Standards & Compliance</h2>
                     <div className="space-y-4">
                       {rfpData.qualityStandards.map((standard, index) => (
@@ -750,7 +834,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                     </div>
                   </div>
 
-                  <div className={`mb-12 ${visibleSections.includes(4) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-4" className={`mb-12 ${visibleSections.includes(5) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">4. Scope of Work</h2>
                     <div className="space-y-4">
                       {rfpData.scopeOfWork.map((scope, index) => (
@@ -787,7 +871,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                     </div>
                   </div>
 
-                  <div className={`mb-12 ${visibleSections.includes(5) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-5" className={`mb-12 ${visibleSections.includes(6) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">5. Proposal Submission Requirements</h2>
                     <div className="space-y-4">
                       {rfpData.submissionRequirements.map((req, index) => (
@@ -825,7 +909,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                   </div>
 
                   {/* Evaluation Criteria */}
-                  <div className={`mb-12 ${visibleSections.includes(6) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-6" className={`mb-12 ${visibleSections.includes(7) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">6. Evaluation Criteria</h2>
                     <p className="text-sm text-gray-700 mb-4 leading-relaxed">
                       Proposals will be evaluated based on the following criteria:
@@ -874,7 +958,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                   </div>
 
                   {/* Terms & Conditions */}
-                  <div className={`mb-12 ${visibleSections.includes(7) ? 'animate-slide-in' : 'section-hidden'}`}>
+                  <div id="section-7" className={`mb-12 ${visibleSections.includes(8) ? 'animate-slide-in' : 'section-hidden'}`}>
                     <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">7. Terms & Conditions</h2>
                     <div className="space-y-6">
                       {rfpData.termsAndConditions?.map((term, index) => (
@@ -931,8 +1015,41 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
                     </div>
                   </div>
 
-                  <div className={`mb-12 ${visibleSections.includes(8) ? 'animate-slide-in' : 'section-hidden'}`}>
-                    <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">8. Contact Information</h2>
+                  {/* Cost Born By Respondents */}
+                  <div id="section-8" className={`mb-12 ${visibleSections.includes(9) ? 'animate-slide-in' : 'section-hidden'}`}>
+                    <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">8. Cost Born By Respondents</h2>
+                    <EditorInput
+                      value={rfpData.costBornByRespondents}
+                      onChange={(val) => setRfpData({ ...rfpData, costBornByRespondents: val })}
+                      multiline={true}
+                      className="text-sm text-gray-700 leading-relaxed font-sans"
+                    />
+                  </div>
+
+                  {/* Changes in Scope */}
+                  <div id="section-9" className={`mb-12 ${visibleSections.includes(10) ? 'animate-slide-in' : 'section-hidden'}`}>
+                    <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">9. Changes in Scope</h2>
+                    <EditorInput
+                      value={rfpData.changesInScope}
+                      onChange={(val) => setRfpData({ ...rfpData, changesInScope: val })}
+                      multiline={true}
+                      className="text-sm text-gray-700 leading-relaxed font-sans"
+                    />
+                  </div>
+
+                  {/* Clarification of Submissions */}
+                  <div id="section-10" className={`mb-12 ${visibleSections.includes(11) ? 'animate-slide-in' : 'section-hidden'}`}>
+                    <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">10. Clarification of Submissions</h2>
+                    <EditorInput
+                      value={rfpData.clarificationOfSubmissions}
+                      onChange={(val) => setRfpData({ ...rfpData, clarificationOfSubmissions: val })}
+                      multiline={true}
+                      className="text-sm text-gray-700 leading-relaxed font-sans"
+                    />
+                  </div>
+
+                  <div id="section-11" className={`mb-12 ${visibleSections.includes(12) ? 'animate-slide-in' : 'section-hidden'}`}>
+                    <h2 className="text-sm font-bold text-gray-900 mb-6 uppercase tracking-wider">11. Contact Information</h2>
                     <div className="space-y-3">
                       <p className="text-sm text-gray-700">For any queries or clarifications regarding this RFP, please contact:</p>
                       <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
@@ -962,8 +1079,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
           <div className="border-t border-gray-100 bg-white px-6 py-4 rounded-b-2xl flex justify-end gap-3">
             <Button
               onClick={() => {
-                // Handle save as draft
-                console.log('Saved as draft:', { projectName: projectName || 'Untitled Project', ...rfpData });
+                onSaveAsDraft?.({ projectName: projectName || 'Untitled Project', ...rfpData });
               }}
               disabled={!projectName.trim() || !rfpGenerated}
               className="h-12 px-6 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 disabled:opacity-50 text-sm font-medium"
@@ -975,7 +1091,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
               disabled={!projectName.trim() || !rfpGenerated}
               className="h-12 px-6 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-50 text-sm font-medium"
             >
-              Send for Approval
+              Publish RFP
             </Button>
           </div>
         </div>
@@ -989,9 +1105,9 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, projectName: i
           setShowConfirmDialog(false);
           onSendForApproval({ projectName: projectName || 'Untitled Project', ...rfpData });
         }}
-        title="Send RFP for Approval?"
-        description={`Are you sure you want to send "${projectName || 'Untitled Project'}" for approval? It will be reviewed by the approval team.`}
-        confirmText="Send for Approval"
+        title="Publish RFP?"
+        description={`Are you sure you want to publish "${projectName || 'Untitled Project'}"? It will no longer be editable once published.`}
+        confirmText="Publish RFP"
         cancelText="Cancel"
       />
     </div>

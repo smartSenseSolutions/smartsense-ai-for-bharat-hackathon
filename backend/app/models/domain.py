@@ -28,9 +28,10 @@ class User(Base):
 
 
 class ProjectStatus(str, enum.Enum):
-    OPEN = "open"
     DRAFT = "draft"
-    CLOSED = "closed"
+    PUBLISHED = "published"
+    IN_PROGRESS = "in-progress"
+    COMPLETED = "completed"
 
 
 class Project(Base):
@@ -38,34 +39,34 @@ class Project(Base):
 
     id = Column(String, primary_key=True, index=True)
     project_name = Column(String, index=True)
-    status = Column(Enum(ProjectStatus), default=ProjectStatus.OPEN)
+    status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT)
     rfp_data = Column(JSON, nullable=True)  # Full RFP configuration/draft
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    rfps = relationship("RFP", back_populates="project")
+    project_vendors = relationship("ProjectVendor", back_populates="project")
     quotes = relationship("Quote", back_populates="project")
 
 
-class RFP(Base):
-    __tablename__ = "rfps"
+class ProjectVendor(Base):
+    __tablename__ = "project_vendors"
 
-    # An RFP corresponds to a sent request to a Vendor
+    # Tracks which vendors have been invited to a specific project
     id = Column(String, primary_key=True, index=True)
     project_id = Column(String, ForeignKey("projects.id"))
     vendor_id = Column(String, ForeignKey("vendors.id"))
     status = Column(String, default="sent")  # sent, viewed, answered
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    project = relationship("Project", back_populates="rfps")
-    vendor = relationship("Vendor", back_populates="rfps")
+    project = relationship("Project", back_populates="project_vendors")
+    vendor = relationship("Vendor", back_populates="project_vendors")
 
 
 class Vendor(Base):
     __tablename__ = "vendors"
 
     id = Column(String, primary_key=True, index=True)
-    name = Column(String, index=True)
+    name = Column(String, index=True, unique=True)
     contact_email = Column(String, nullable=True)
     capabilities = Column(JSON, nullable=True)  # Capability score, match attributes
     certification_status = Column(String, nullable=True)  # verified, pending, invalid
@@ -79,7 +80,7 @@ class Vendor(Base):
     certificates = Column(JSON, nullable=True)  # List[str] of cert/license names
     products = Column(JSON, nullable=True)  # List[str] of product names
 
-    rfps = relationship("RFP", back_populates="vendor")
+    project_vendors = relationship("ProjectVendor", back_populates="vendor")
     quotes = relationship("Quote", back_populates="vendor")
     documents = relationship("VendorDocument", back_populates="vendor")
 
