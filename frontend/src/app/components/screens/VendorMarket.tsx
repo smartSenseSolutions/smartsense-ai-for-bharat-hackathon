@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Shield, MapPin, Award, Star, X, ExternalLink, TrendingUp, Tag, Clock, Sparkles, Mail, Phone, CalendarDays, Globe } from 'lucide-react';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -47,21 +47,35 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [searchHistory, setSearchHistory] = useState<Array<{ query: string; date: string }>>([
-    { query: 'ISO 13485 MRI machine vendors South India with onsite installation and training', date: '23 Jan 2026' },
-    { query: 'GMP certified Ibuprofen API suppliers Hyderabad with active Drug Master File registration', date: '22 Jan 2026' },
-    { query: 'CDSCO medical device registration consultants India for Class C import license applications', date: '21 Jan 2026' },
-    { query: 'FDA-audited oncology CROs Mumbai specializing in Phase III clinical trial management', date: '20 Jan 2026' },
-    { query: 'NABL accredited genomic sequencing labs Bangalore offering comprehensive bioinformatics analysis reports', date: '19 Jan 2026' },
-    { query: 'HIPAA compliant EHR software providers India with integrated telemedicine and patient portals', date: '18 Jan 2026' },
-    { query: 'GDP certified pharma cold chain Delhi for international biological sample shipments', date: '17 Jan 2026' },
-    { query: 'CE marked orthopedic implant exporters Gujarat with ISO 13485 quality system certification', date: '16 Jan 2026' },
-    { query: 'ISO 9001 cardiac IVD reagent suppliers Pune for high volume hospital laboratory use', date: '15 Jan 2026' },
-    { query: 'Medical autoclave AMC service providers Chennai with guaranteed 24-hour emergency repair response', date: '14 Jan 2026' },
-  ]);
+  interface SearchHistoryItem {
+    query: string;
+    date: string;
+    internal_results: AIVendorResult[];
+    external_results: AIVendorResult[];
+  }
+
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [aiResults, setAIResults] = useState<AIVendorResult[]>([]);
-  const [isAILoading, setIsAILoading] = useState(false);
+  const [internalResults, setInternalResults] = useState<AIVendorResult[]>([]);
+  const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
+  const [isInternalLoading, setIsInternalLoading] = useState(false);
+  const [isExternalLoading, setIsExternalLoading] = useState(false);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedVendor(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  // Fetch history on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/api/search/history`)
+      .then(res => res.json())
+      .then(data => setSearchHistory(data))
+      .catch(err => console.error('[VendorMarket] Failed to load history:', err));
+  }, []);
 
   const hasSearched = submittedQuery.length > 0;
 
@@ -70,23 +84,32 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
     if (!trimmed) return;
 
     setSubmittedQuery(trimmed);
-    setAIResults([]);
-    setIsAILoading(true);
+    setInternalResults([]);
+    setExternalResults([]);
+    setIsInternalLoading(true);
+    setIsExternalLoading(true);
 
-    if (!searchHistory.some(item => item.query === trimmed)) {
-      setSearchHistory(prev => [
-        ...prev,
-        { query: trimmed, date: new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) },
-      ]);
+    // Check if we already have this exact query in DB history
+    const cachedItem = searchHistory.find(item => item.query.toLowerCase() === trimmed.toLowerCase());
+
+    if (cachedItem) {
+      setInternalResults(cachedItem.internal_results || []);
+      setExternalResults(cachedItem.external_results || []);
+      setIsInternalLoading(false);
+      setIsExternalLoading(false);
+      return;
     }
 
     const token = localStorage.getItem('auth_token');
-    fetch(`${API_BASE}/api/search/vendors/smart`, {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    // 1. Fetch fast internal results
+    const internalReq = fetch(`${API_BASE}/api/search/vendors/smart/internal`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers,
       body: JSON.stringify({ query: trimmed }),
     })
       .then(res => {
@@ -94,14 +117,57 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
         return res.json();
       })
       .then(data => {
-        console.log('[VendorMarket] API results:', data.results);
-        setAIResults(data.results ?? []);
+        const results = data.results ?? [];
+        setInternalResults(results);
+        setIsInternalLoading(false);
+        return results;
       })
       .catch(err => {
-        console.error('[VendorMarket] AI search failed:', err);
-        setAIResults([]);
+        console.error('[VendorMarket] Internal search failed:', err);
+        setIsInternalLoading(false);
+        return [];
+      });
+
+    // 2. Fetch slower external Gemini results
+    const externalReq = fetch(`${API_BASE}/api/search/vendors/smart/external`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: trimmed }),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       })
-      .finally(() => setIsAILoading(false));
+      .then(data => {
+        const results = data.results ?? [];
+        setExternalResults(results);
+        setIsExternalLoading(false);
+        return results;
+      })
+      .catch(err => {
+        console.error('[VendorMarket] External search failed:', err);
+        setIsExternalLoading(false);
+        return [];
+      });
+
+    // 3. When both finish, save to DB
+    Promise.all([internalReq, externalReq]).then(([internalData, externalData]) => {
+      const payload = {
+        query: trimmed,
+        date: new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }),
+        internal_results: internalData,
+        external_results: externalData
+      };
+
+      fetch(`${API_BASE}/api/search/history`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      }).catch(err => console.error('[VendorMarket] Failed to save search history:', err));
+
+      // Update local UI history block instantly
+      setSearchHistory(prev => [payload, ...prev]);
+    });
   };
 
   const handleSearch = () => fireSearch(searchQuery);
@@ -221,21 +287,21 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
             <h2 className="text-xl font-semibold text-gray-900">{submittedQuery}</h2>
           </div>
           <div className="max-w-[1400px] mx-auto mb-6">
-            {isAILoading ? (
+            {isInternalLoading && isExternalLoading ? (
               <p className="text-sm text-gray-400">Searching…</p>
             ) : (
               <p className="text-sm text-gray-600">
-                {aiResults.length} vendor{aiResults.length !== 1 ? 's' : ''}
+                {internalResults.length + externalResults.length} vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''}
               </p>
             )}
           </div>
 
           {/* Results grid */}
-          <div className="max-w-[1400px] mx-auto max-h-[calc(100vh-300px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="max-w-[1400px] mx-auto max-h-[calc(100vh-300px)] overflow-y-auto pb-24 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {/* Loading skeletons */}
-            {isAILoading && (
+            {isInternalLoading && (
               <div className="grid grid-cols-2 gap-4">
-                {[1, 2, 3].map(i => (
+                {[1, 2, 3, 4].map(i => (
                   <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
                     <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
                     <div className="h-3 bg-gray-100 rounded w-full mb-2" />
@@ -245,9 +311,9 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
               </div>
             )}
 
-            {!isAILoading && aiResults.length > 0 && (() => {
-              const internal = aiResults.filter(r => r.source === 'internal');
-              const external = aiResults.filter(r => r.source === 'external');
+            {!isInternalLoading && (internalResults.length > 0 || externalResults.length > 0 || isExternalLoading) && (() => {
+              const internal = internalResults;
+              const external = externalResults;
               return (
                 <div className="space-y-8">
                   {/* ── Internal (verified) results ── */}
@@ -337,51 +403,112 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                   )}
 
                   {/* ── External (Exa) results ── */}
-                  {external.length > 0 && (
+                  {(external.length > 0 || isExternalLoading) && (
                     <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Globe className="w-4 h-4 text-blue-500" />
-                        <h3 className="text-sm font-semibold text-gray-700">External Sources</h3>
-                        <span className="text-xs text-gray-400">({external.length})</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-blue-500" />
+                          <h3 className="text-sm font-semibold text-gray-700">External Sources</h3>
+                          <span className="text-xs text-gray-400">({isExternalLoading ? 'AI searching...' : external.length})</span>
+                        </div>
+                        {isExternalLoading && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Gemini is researching the web...
+                          </div>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        {external.map((result) => (
-                          <Card
-                            key={result.vendor_id}
-                            className="bg-white hover:bg-gray-50 transition-all border border-[#eeeff1]"
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between mb-2">
-                                <h3 className="text-base font-semibold text-gray-900 truncate leading-snug">
-                                  {result.vendor_name}
-                                </h3>
-                                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600 ml-2 flex-shrink-0">
-                                  <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
-                                  External
-                                </Badge>
+                        {isExternalLoading ? (
+                          [1, 2].map(i => (
+                            <div key={`ext-loading-${i}`} className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden">
+                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="h-5 bg-gray-100 rounded-md w-1/2 animate-pulse" />
+                                <div className="h-4 bg-gray-50 rounded-full w-14 animate-pulse" />
                               </div>
+                              <div className="space-y-2 mb-4">
+                                <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
+                                <div className="h-3 bg-gray-100 rounded w-[85%] animate-pulse" />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="h-3 bg-gray-100 rounded w-24 animate-pulse" />
+                                <div className="h-3 bg-blue-50/50 rounded w-20 animate-pulse" />
+                              </div>
+                            </div>
+                          ))
+                        ) : external.map((result) => {
+                          const productsStr = result.products.join(', ');
+                          const detail = toDetailVendor(result);
+                          return (
+                            <Card
+                              key={result.vendor_id}
+                              className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
+                              onClick={() => {
+                                setSelectedVendor(detail);
+                                onVendorSelect(detail);
+                              }}
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                      {result.vendor_name}
+                                    </h3>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
+                                    <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
+                                      <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
+                                      External
+                                    </Badge>
+                                  </div>
+                                </div>
 
-                              {result.description && (
-                                <p className="text-xs text-gray-500 mb-3 line-clamp-3 leading-relaxed">
-                                  {result.description}
-                                </p>
-                              )}
+                                {productsStr && (
+                                  <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+                                )}
 
-                              {result.website && (
-                                <a
-                                  href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Visit website
-                                </a>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))}
+                                {result.description && (
+                                  <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
+                                    {result.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    {result.location && (
+                                      <div className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3 text-gray-400" />
+                                        <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
+                                      </div>
+                                    )}
+                                    {result.estd && (
+                                      <>
+                                        {result.location && <span className="text-gray-300">•</span>}
+                                        <span className="text-xs text-gray-600">
+                                          {new Date().getFullYear() - result.estd}y
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {result.website && (
+                                    <a
+                                      href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                      Visit site
+                                    </a>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -390,7 +517,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
             })()}
 
             {/* Empty state */}
-            {!isAILoading && aiResults.length === 0 && (
+            {!isInternalLoading && !isExternalLoading && internalResults.length === 0 && externalResults.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <Search className="w-10 h-10 text-gray-300 mb-4" />
                 <p className="text-base font-medium text-gray-500">No vendors found</p>
@@ -403,8 +530,14 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
 
       {/* ── Vendor detail panel ────────────────────────────────────────── */}
       {selectedVendor && (
-        <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-end">
-          <div className="w-full max-w-2xl h-full bg-white shadow-2xl overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/20 z-50 flex items-center justify-end"
+          onClick={() => setSelectedVendor(null)}
+        >
+          <div
+            className="w-full max-w-2xl h-full bg-white shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="sticky top-0 bg-white border-b border-[#eeeff1] p-4 flex items-center justify-between z-10">
               <h2 className="text-xl font-semibold text-gray-900">Vendor Details</h2>
               <Button variant="ghost" size="icon" onClick={() => setSelectedVendor(null)}>
@@ -569,18 +702,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                 </div>
               )}
 
-              {/* ── Actions ── */}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  className="flex-1 bg-[#3B82F6] hover:bg-[#2563EB] h-10"
-                  onClick={() => onCreateRFP(selectedVendor)}
-                >
-                  Create RFP for this Vendor
-                </Button>
-                <Button variant="outline" className="flex-1 h-10 border-[#eeeff1]">
-                  Add to Watchlist
-                </Button>
-              </div>
+
             </div>
           </div>
         </div>

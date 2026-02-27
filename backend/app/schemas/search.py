@@ -31,8 +31,8 @@ class VendorSearchResult(BaseModel):
 
     vendor_id: str
     vendor_name: str
-    source: str = "internal"      # "internal" (OpenSearch) | "external" (Exa)
-    description: str = ""         # snippet for external results
+    source: str = "internal"  # "internal" (OpenSearch) | "external" (Exa)
+    description: str = ""  # snippet for external results
     location: str = ""
     products: List[str] = []
     certificates: List[str] = []
@@ -58,3 +58,10 @@ class VendorSmartSearchResponse(BaseModel):
     external_count: int
     query: str
     top_n: int
+
+
+class SearchHistoryResponse(BaseModel):
+    query: str
+    date: str
+    internal_results: List[VendorSearchResult]
+    external_results: List[VendorSearchResult]

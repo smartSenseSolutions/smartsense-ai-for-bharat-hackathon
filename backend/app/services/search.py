@@ -1,19 +1,20 @@
-from exa_py import Exa
+import os
+from google import genai
+from google.genai import types
 from app.core.config import settings
 from app.services.documents import (
     generate_embedding,
     _get_opensearch_client,
     VENDOR_INDEX_NAME,
 )
-from app.services.rfp import get_bedrock_client
 import json
-import asyncio
 
 
-def get_exa_client() -> Exa:
-    if not settings.EXA_API_KEY:
-        raise ValueError("Exa API key not configured")
-    return Exa(api_key=settings.EXA_API_KEY)
+def get_gemini_client() -> genai.Client:
+    api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("Gemini API key not configured")
+    return genai.Client(api_key=api_key)
 
 
 async def search_external_vendors(query: str, num_results: int = 10):
@@ -69,54 +70,22 @@ async def search_external_vendors(query: str, num_results: int = 10):
     except Exception as e:
         print(f"Error searching OpenSearch: {e}")
 
-    # 2. Search Exa
+    # 2. Search Gemini
     try:
-        exa = get_exa_client()
-        response = exa.search_and_contents(
-            query=f"Companies or vendors providing: {query}",
-            type="neural",
-            # use_autoprompt=True,
-            num_results=num_results,
-            text=True,
-            highlights=True,
-            exclude_domains=[
-                "indiamart.com",
-                "dir.indiamart.com",
-                "tradeindia.com",
-                "justdial.com",
-                "sulekha.com",
-                "exportersindia.com",
-                "jdmagicbox.com",
-                "crunchbase.com",
-                "zaubacorp.com",
-                "tofler.in",
-                "instafinancials.com",
-                "ambitionbox.com",
-                "glassdoor.co.in",
-                "glassdoor.com",
-                "linkedin.com",
-                "dial4trade.com",
-            ],
-        )
-
-        for res in response.results:
-            # Score normalization (Exa returns score, but usually we just rank them)
-            # We'll assign a mock relevancy_score for now based on normalized rank
+        external_results = await search_gemini_vendors(query, num_results)
+        for external in external_results:
             results.append(
                 {
-                    "id": res.id,
-                    "name": res.title or res.url,
-                    "url": res.url,
-                    "description": res.text[:200] + "..." if res.text else "",
-                    "relevancy_score": res.score
-                    if hasattr(res, "score") and res.score
-                    else 0.8,
+                    "id": external["vendor_id"],
+                    "name": external["vendor_name"],
+                    "url": external["website"],
+                    "description": external["description"],
+                    "relevancy_score": external["final_score"],
                     "source": "external",
                 }
             )
-
     except Exception as e:
-        print(f"Error searching Exa: {e}")
+        print(f"Error searching Gemini: {e}")
 
     # Sort combined results by score descending
     results.sort(key=lambda x: x.get("relevancy_score", 0), reverse=True)
@@ -316,152 +285,66 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
     return results[:top_n]
 
 
-async def extract_vendor_details_from_text(text: str) -> dict:
+async def search_gemini_vendors(query: str, num_results: int = 5) -> list[dict]:
     """
-    Extract structured vendor details from raw website text using Nova Lite.
-    Returns a dict with location, products, contact_email, mobile, estd, and summary.
+    Search for external vendors using Gemini Search and structured output.
     """
-    if not text:
-        return {}
-
     try:
-        bedrock = get_bedrock_client()
+        client = get_gemini_client()
         prompt = f"""
-        Extract the following information about the company or vendor from the text below.
-        Return strictly a JSON object matching this structure:
-        {{
-            "location": "City, State, or Country (or empty string)",
-            "products": ["list", "of", "products/services", "offered", "or", "empty", "list"],
-            "contact_email": "email address or empty string",
-            "mobile": "phone number or empty string",
-            "estd": "establishment year as integer or null",
-            "summary": "a concise 2-sentence summary of what the company does"
-        }}
-
-        Text:
-        {text[:4000]} # Limit text length for prompt
+        Find {num_results} actual {query}. 
+        Use Google Search to find their details. Do NOT return directory sites like Indiamart or Justdial.
+        
+        Return STRICTLY a JSON array of objects. Do not include any markdown formatting like ```json.
+        Each object must have these exactly matching string keys:
+        - "vendor_name": "Name of the manufacturer"
+        - "website": "Their official website URL"
+        - "description": "A 2-sentence summary of what they do"
+        - "location": "Their full city and state"
+        - "products": ["list", "of", "products"]
+        - "contact_email": "email" or empty string
+        - "mobile": "mobile number" or empty string
+        - "estd": establishment year as integer or null
         """
-
-        # Amazon Nova API format
-        body = json.dumps(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"text": prompt}],
-                    }
-                ],
-                "inferenceConfig": {"max_new_tokens": 500},
-            }
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}],
+            ),
         )
 
-        response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_NOVA_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
-
-        # Amazon Nova response format
-        response_body = json.loads(response.get("body").read())
-        content = (
-            response_body.get("output", {})
-            .get("message", {})
-            .get("content", [])[0]
-            .get("text", "{}")
-        )
-
-        # Clean up the output if it contains markdown formatting
+        content = response.text.strip()
         if content.startswith("```json"):
             content = content[7:-3]
+        elif content.startswith("```"):
+            content = content[3:-3]
 
-        return json.loads(content)
-    except Exception as e:
-        print(f"Error extracting vendor details: {e}")
-        return {}
-
-
-async def search_exa_vendors(query: str, num_results: int = 5) -> list[dict]:
-    """
-    Search for external vendors using Exa neural search.
-
-    Returns a list of result dicts shaped like VendorSearchResult so they
-    can be merged directly with internal results.  External results carry
-    `source="external"` and only populate `vendor_name`, `website`,
-    `description`, and `final_score`.
-    """
-    try:
-        exa = get_exa_client()
-        response = exa.search_and_contents(
-            query=f"Companies or vendors providing: {query}",
-            type="neural",
-            # use_autoprompt=True,
-            num_results=num_results,
-            text=True,
-            exclude_domains=[
-                "indiamart.com",
-                "dir.indiamart.com",
-                "tradeindia.com",
-                "justdial.com",
-                "sulekha.com",
-                "exportersindia.com",
-                "jdmagicbox.com",
-                "crunchbase.com",
-                "zaubacorp.com",
-                "tofler.in",
-                "instafinancials.com",
-                "ambitionbox.com",
-                "glassdoor.co.in",
-                "glassdoor.com",
-                "linkedin.com",
-                "dial4trade.com",
-            ],
-        )
-
-        # Extract structured data for all results concurrently
-        extraction_tasks = [
-            extract_vendor_details_from_text(res.text or "") for res in response.results
-        ]
-        extracted_details = await asyncio.gather(
-            *extraction_tasks, return_exceptions=True
-        )
+        vendors_data = json.loads(content)
 
         results = []
-        for i, res in enumerate(response.results):
-            score = res.score if hasattr(res, "score") and res.score else 0.5
-            text = res.text or ""
-
-            # Use extracted details if available and valid
-            details = extracted_details[i]
-            if isinstance(details, Exception):
-                print(f"[search] Extraction failed for {res.url}: {details}")
-                details = {}
-
-            snippet = details.get("summary") or (
-                text[:300] + "…" if len(text) > 300 else text
-            )
-
+        for i, v in enumerate(vendors_data):
             results.append(
                 {
-                    "vendor_id": res.id,
-                    "vendor_name": res.title or res.url,
+                    "vendor_id": f"gemini_{i}",
+                    "vendor_name": v.get("vendor_name", ""),
                     "source": "external",
-                    "description": snippet,
-                    "location": details.get("location", ""),
-                    "products": details.get("products", []),
+                    "description": v.get("description", ""),
+                    "location": v.get("location", ""),
+                    "products": v.get("products", []),
                     "certificates": [],
                     "certificate_details": [],
-                    "website": res.url,
-                    "contact_email": details.get("contact_email", ""),
-                    "mobile": details.get("mobile", ""),
-                    "estd": details.get("estd", None),
-                    "final_score": round(float(score), 4),
+                    "website": v.get("website", ""),
+                    "contact_email": v.get("contact_email", ""),
+                    "mobile": v.get("mobile", ""),
+                    "estd": v.get("estd", None),
+                    "final_score": round(0.9 - (i * 0.05), 4),
                     "keyword_score": 0.0,
                     "vector_score": 0.0,
                 }
             )
-        print(f"[search] Exa phase: {len(results)} hits")
+        print(f"[search] Gemini phase: {len(results)} hits")
         return results
     except Exception as e:
-        print(f"[search] Exa phase failed: {e}")
+        print(f"[search] Gemini phase failed: {e}")
         return []
