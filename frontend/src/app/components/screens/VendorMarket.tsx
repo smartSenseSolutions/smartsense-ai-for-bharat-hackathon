@@ -89,17 +89,6 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
     setIsInternalLoading(true);
     setIsExternalLoading(true);
 
-    // Check if we already have this exact query in DB history
-    const cachedItem = searchHistory.find(item => item.query.toLowerCase() === trimmed.toLowerCase());
-
-    if (cachedItem) {
-      setInternalResults(cachedItem.internal_results || []);
-      setExternalResults(cachedItem.external_results || []);
-      setIsInternalLoading(false);
-      setIsExternalLoading(false);
-      return;
-    }
-
     const token = localStorage.getItem('auth_token');
     const headers = {
       'Content-Type': 'application/json',
@@ -298,234 +287,226 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
 
           {/* Results grid */}
           <div className="max-w-[1400px] mx-auto max-h-[calc(100vh-300px)] overflow-y-auto pb-24 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {/* Loading skeletons */}
-            {isInternalLoading && (
-              <div className="grid grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
-                    <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
-                    <div className="h-3 bg-gray-100 rounded w-full mb-2" />
-                    <div className="h-3 bg-gray-100 rounded w-1/2" />
+            <div className="space-y-8">
+              {/* ── Internal (verified) results ── */}
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-3">
+                  <Shield className="w-4 h-4 text-green-600" />
+                  <h3 className="text-sm font-semibold text-gray-700">Verified Vendors</h3>
+                  <span className="text-xs text-gray-400">({isInternalLoading ? 'Searching...' : internalResults.length})</span>
+                </div>
+
+                {isInternalLoading ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
+                        <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
+                        <div className="h-3 bg-gray-100 rounded w-full mb-2" />
+                        <div className="h-3 bg-gray-100 rounded w-1/2" />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {!isInternalLoading && (internalResults.length > 0 || externalResults.length > 0 || isExternalLoading) && (() => {
-              const internal = internalResults;
-              const external = externalResults;
-              return (
-                <div className="space-y-8">
-                  {/* ── Internal (verified) results ── */}
-                  <div className="mb-8">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Shield className="w-4 h-4 text-green-600" />
-                      <h3 className="text-sm font-semibold text-gray-700">Verified Vendors</h3>
-                      <span className="text-xs text-gray-400">({internal.length})</span>
-                    </div>
-                    {internal.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        {internal.map((result) => {
-                          const trustScore = Math.round(result.final_score * 100);
-                          const productsStr = result.products.join(', ');
-                          const detail = toDetailVendor(result);
-                          return (
-                            <Card
-                              key={result.vendor_id}
-                              className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
-                              onClick={() => {
-                                setSelectedVendor(detail);
-                                onVendorSelect(detail);
-                              }}
-                            >
-                              <CardContent className="p-4">
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                                      {result.vendor_name}
-                                    </h3>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
-                                    <div className="flex items-center gap-1">
-                                      <TrendingUp className="w-3.5 h-3.5 text-green-600" />
-                                      <span className="text-sm font-bold text-green-600">{trustScore}%</span>
-                                    </div>
-                                    <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-green-100 text-green-700">
-                                      <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
-                                      Verified
-                                    </Badge>
-                                  </div>
-                                </div>
-
-                                <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
-
-                                {result.certificates.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mb-3">
-                                    {result.certificates.map((cert, idx) => (
-                                      <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0 leading-none font-medium">
-                                        {cert}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                )}
-
-                                <div className="flex items-center gap-2">
-                                  {result.location && (
-                                    <div className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3 text-gray-400" />
-                                      <span className="text-xs text-gray-600">{result.location}</span>
-                                    </div>
-                                  )}
-                                  {result.certificates.length > 0 && (
-                                    <>
-                                      <span className="text-gray-300">•</span>
-                                      <div className="flex items-center gap-1">
-                                        <Award className="w-3 h-3 text-gray-400" />
-                                        <span className="text-xs text-gray-600">{result.certificates.length} certs</span>
-                                      </div>
-                                    </>
-                                  )}
-                                  {result.estd && (
-                                    <>
-                                      <span className="text-gray-300">•</span>
-                                      <span className="text-xs text-gray-600">
-                                        {new Date().getFullYear() - result.estd}y
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
-                        <p className="text-sm text-gray-500 font-medium">No verified vendors met the search criteria.</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── External (Exa/Gemini) results ── */}
-                  {(external.length > 0 || isExternalLoading || internal.length > 0) && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Globe className="w-4 h-4 text-blue-500" />
-                          <h3 className="text-sm font-semibold text-gray-700">External Sources</h3>
-                          <span className="text-xs text-gray-400">({isExternalLoading ? 'AI searching...' : external.length})</span>
-                        </div>
-                        {isExternalLoading && (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Gemini is researching the web...
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        {isExternalLoading ? (
-                          [1, 2].map(i => (
-                            <div key={`ext-loading-${i}`} className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden">
-                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="h-5 bg-gray-100 rounded-md w-1/2 animate-pulse" />
-                                <div className="h-4 bg-gray-50 rounded-full w-14 animate-pulse" />
+                ) : internalResults.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {internalResults.map((result) => {
+                      const trustScore = Math.round(result.final_score * 100);
+                      const productsStr = result.products.join(', ');
+                      const detail = toDetailVendor(result);
+                      return (
+                        <Card
+                          key={result.vendor_id}
+                          className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
+                          onClick={() => {
+                            setSelectedVendor(detail);
+                            onVendorSelect(detail);
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                  {result.vendor_name}
+                                </h3>
                               </div>
-                              <div className="space-y-2 mb-4">
-                                <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
-                                <div className="h-3 bg-gray-100 rounded w-[85%] animate-pulse" />
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div className="h-3 bg-gray-100 rounded w-24 animate-pulse" />
-                                <div className="h-3 bg-blue-50/50 rounded w-20 animate-pulse" />
+                              <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                                  <span className="text-sm font-bold text-green-600">{trustScore}%</span>
+                                </div>
+                                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-green-100 text-green-700">
+                                  <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
+                                  Verified
+                                </Badge>
                               </div>
                             </div>
-                          ))
-                        ) : external.map((result) => {
-                          const productsStr = result.products.join(', ');
-                          const detail = toDetailVendor(result);
-                          return (
-                            <Card
-                              key={result.vendor_id}
-                              className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
-                              onClick={() => {
-                                setSelectedVendor(detail);
-                                onVendorSelect(detail);
-                              }}
-                            >
-                              <CardContent className="p-4">
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                                      {result.vendor_name}
-                                    </h3>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
-                                    <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
-                                      <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
-                                      External
-                                    </Badge>
-                                  </div>
+
+                            <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+
+                            {result.certificates.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-3">
+                                {result.certificates.map((cert, idx) => (
+                                  <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0 leading-none font-medium">
+                                    {cert}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2">
+                              {result.location && (
+                                <div className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-gray-400" />
+                                  <span className="text-xs text-gray-600">{result.location}</span>
                                 </div>
-
-                                {productsStr && (
-                                  <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
-                                )}
-
-                                {result.description && (
-                                  <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
-                                    {result.description}
-                                  </p>
-                                )}
-
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    {result.location && (
-                                      <div className="flex items-center gap-1">
-                                        <MapPin className="w-3 h-3 text-gray-400" />
-                                        <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
-                                      </div>
-                                    )}
-                                    {result.estd && (
-                                      <>
-                                        {result.location && <span className="text-gray-300">•</span>}
-                                        <span className="text-xs text-gray-600">
-                                          {new Date().getFullYear() - result.estd}y
-                                        </span>
-                                      </>
-                                    )}
+                              )}
+                              {result.certificates.length > 0 && (
+                                <>
+                                  <span className="text-gray-300">•</span>
+                                  <div className="flex items-center gap-1">
+                                    <Award className="w-3 h-3 text-gray-400" />
+                                    <span className="text-xs text-gray-600">{result.certificates.length} certs</span>
                                   </div>
+                                </>
+                              )}
+                              {result.estd && (
+                                <>
+                                  <span className="text-gray-300">•</span>
+                                  <span className="text-xs text-gray-600">
+                                    {new Date().getFullYear() - result.estd}y
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
+                    <p className="text-sm text-gray-500 font-medium">No verified vendors met the search criteria.</p>
+                  </div>
+                )}
+              </div>
 
-                                  {result.website && (
-                                    <a
-                                      href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
-                                      onClick={e => e.stopPropagation()}
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                      Visit site
-                                    </a>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-
-                      {/* Empty external check */}
-                      {!isExternalLoading && external.length === 0 && (
-                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center mt-4">
-                          <p className="text-sm text-gray-500 font-medium">Google Search did not return any external matches.</p>
-                        </div>
-                      )}
+              {/* ── External (Exa/Gemini) results ── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-gray-700">External Sources</h3>
+                    <span className="text-xs text-gray-400">({isExternalLoading ? 'AI searching...' : externalResults.length})</span>
+                  </div>
+                  {isExternalLoading && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Gemini is researching the web...
                     </div>
                   )}
                 </div>
-              );
-            })()}
+
+                {isExternalLoading ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {[1, 2].map(i => (
+                      <div key={`ext-loading-${i}`} className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="h-5 bg-gray-100 rounded-md w-1/2 animate-pulse" />
+                          <div className="h-4 bg-gray-50 rounded-full w-14 animate-pulse" />
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
+                          <div className="h-3 bg-gray-100 rounded w-[85%] animate-pulse" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="h-3 bg-gray-100 rounded w-24 animate-pulse" />
+                          <div className="h-3 bg-blue-50/50 rounded w-20 animate-pulse" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : externalResults.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {externalResults.map((result) => {
+                      const productsStr = result.products.join(', ');
+                      const detail = toDetailVendor(result);
+                      return (
+                        <Card
+                          key={result.vendor_id}
+                          className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
+                          onClick={() => {
+                            setSelectedVendor(detail);
+                            onVendorSelect(detail);
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                  {result.vendor_name}
+                                </h3>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
+                                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
+                                  <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
+                                  External
+                                </Badge>
+                              </div>
+                            </div>
+
+                            {productsStr && (
+                              <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+                            )}
+
+                            {result.description && (
+                              <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
+                                {result.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {result.location && (
+                                  <div className="flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-gray-400" />
+                                    <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
+                                  </div>
+                                )}
+                                {result.estd && (
+                                  <>
+                                    {result.location && <span className="text-gray-300">•</span>}
+                                    <span className="text-xs text-gray-600">
+                                      {new Date().getFullYear() - result.estd}y
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+
+                              {result.website && (
+                                <a
+                                  href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Visit site
+                                </a>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center mt-4">
+                    <p className="text-sm text-gray-500 font-medium">Google Search did not return any external matches.</p>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Empty state */}
             {!isInternalLoading && !isExternalLoading && internalResults.length === 0 && externalResults.length === 0 && (
@@ -740,8 +721,12 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                       className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group"
                       onClick={() => {
                         setSearchQuery(historyItem.query);
+                        setSubmittedQuery(historyItem.query);
+                        setInternalResults(historyItem.internal_results || []);
+                        setExternalResults(historyItem.external_results || []);
+                        setIsInternalLoading(false);
+                        setIsExternalLoading(false);
                         setShowHistory(false);
-                        fireSearch(historyItem.query);
                       }}
                     >
                       <div className="flex items-center gap-3 mb-2">
