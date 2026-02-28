@@ -42,9 +42,7 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
       >
         {collapsed ? (
           <>
-            <div className="w-9 h-9 bg-[#3B82F6] rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-base">P</span>
-            </div>
+            <img src="/procure_ai_logo_transparent.png" alt="Procure AI Logo" className="w-9 h-9 object-contain flex-shrink-0" />
             {showExpandButton && (
               <button
                 onClick={onToggleCollapse}
@@ -56,9 +54,7 @@ export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse
           </>
         ) : (
           <div className="flex items-center gap-2.5 w-full">
-            <div className="w-9 h-9 bg-[#3B82F6] rounded-lg flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-base">P</span>
-            </div>
+            <img src="/procure_ai_logo_transparent.png" alt="Procure AI Logo" className="w-9 h-9 object-contain flex-shrink-0" />
             <span className="text-lg font-semibold text-gray-900">Procure AI</span>
             <button
               onClick={onToggleCollapse}
