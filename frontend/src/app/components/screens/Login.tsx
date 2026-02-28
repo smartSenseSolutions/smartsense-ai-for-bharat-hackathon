@@ -49,24 +49,22 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* Logo outside card */}
+        <div className="flex flex-col items-center justify-center mb-8">
+          <img src="/procure_ai_logo_transparent.png" alt="Procure AI Logo" className="h-24 object-contain mb-4" />
+          <div className="text-center">
+            <h2 className="text-3xl font-bold text-gray-900 leading-tight">Procure AI</h2>
+            <p className="text-sm text-gray-500 mt-1">smartSense Solutions</p>
+          </div>
+        </div>
+
         {/* Card */}
         <div className="bg-white border border-[#eeeff1] rounded-2xl shadow-sm p-8">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-[#3B82F6] rounded-xl flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-lg">P</span>
-            </div>
-            <div>
-              <p className="text-base font-semibold text-gray-900 leading-tight">Procure AI</p>
-              <p className="text-xs text-gray-400 leading-tight">smartSense Solutions</p>
-            </div>
-          </div>
-
           {/* Heading */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
+          <div className="mb-6 text-center">
+            <h1 className="text-xl font-semibold text-gray-900">Welcome back</h1>
             <p className="text-sm text-gray-500 mt-1">Sign in to your account to continue</p>
           </div>
 
