@@ -31,6 +31,7 @@ export interface Project {
 interface AuthUser {
   id: string;
   email: string;
+  company_logo_url?: string;
   is_superuser: boolean;
   is_active: boolean;
 }
@@ -290,6 +291,7 @@ export default function App() {
                     project_id: finalProjectId,
                     project_name: rfpData.projectName || currentProjectName,
                     rfp_data: rfpData,
+                    company_logo_url: authUser?.company_logo_url ?? null,
                   }),
                 }).then(async (res) => {
                   if (!res.ok) {

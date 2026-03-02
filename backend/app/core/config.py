@@ -38,13 +38,9 @@ class Settings(BaseSettings):
     SUPERUSER_PASSWORD: str = "changeme"
 
     # Vendor smart search settings
-    VENDOR_SEARCH_TOP_N: int = 3  # number of top internal vendors to return
+    VENDOR_SEARCH_TOP_N: int = 5  # number of top internal vendors to return
     VENDOR_SEARCH_EXTERNAL_N: int = 3  # number of Exa external vendors to return
-    VENDOR_SEARCH_KEYWORD_WEIGHT: float = 0.4  # weight for BM25 keyword score
-    VENDOR_SEARCH_VECTOR_WEIGHT: float = 0.6  # weight for kNN vector score
-    VENDOR_SEARCH_INTERNAL_THRESHOLD: float = (
-        0.3  # minimum final_score to accept internal vendors
-    )
+    VENDOR_SEARCH_RRF_K: int = 60  # RRF constant k (Cormack 2009 default)
     VENDOR_SEARCH_CANDIDATE_MULTIPLIER: int = (
         10  # fetch top_n * multiplier candidates per phase
     )
@@ -58,6 +54,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

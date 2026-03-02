@@ -21,6 +21,7 @@ class RFPDistributeVendor(BaseModel):
     id: str
     name: str
     contact_email: str
+    products: Optional[str] = None
 
 
 class RFPDistributeRequest(BaseModel):
