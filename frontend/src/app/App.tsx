@@ -204,6 +204,7 @@ export default function App() {
       case 'dashboard':
         return (
           <Dashboard
+            userName={authUser?.full_name}
             onNavigate={setCurrentScreen}
             onSearchClick={() => setCurrentScreen('vendor-market')}
           />
@@ -633,6 +634,7 @@ export default function App() {
           collapsed={currentScreen === 'ai-rfp-creator-centered' ? true : sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           userEmail={authUser?.email}
+          fullName={authUser?.full_name}
           onLogout={handleLogout}
         />
 
