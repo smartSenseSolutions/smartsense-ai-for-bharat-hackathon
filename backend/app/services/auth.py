@@ -67,6 +67,11 @@ def get_current_user(token: str, db: Session) -> User:
 
 def update_user(db: Session, user: User, **fields) -> User:
     """Apply arbitrary field updates to a User and commit."""
+    if "password" in fields:
+        password = fields.pop("password")
+        user.hashed_password = get_password_hash(password)
+        user.password_last_changed_at = datetime.utcnow()
+
     for key, value in fields.items():
         setattr(user, key, value)
     db.commit()

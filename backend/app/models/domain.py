@@ -24,7 +24,9 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_superuser = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    full_name = Column(String, nullable=True)
     company_logo_url = Column(String, nullable=True)
+    password_last_changed_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

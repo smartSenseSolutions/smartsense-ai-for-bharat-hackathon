@@ -32,6 +32,12 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/me", response_model=UserResponse)
+def get_me(user=Depends(_current_user)):
+    """Return the currently authenticated user's profile."""
+    return UserResponse.model_validate(user)
+
+
 @router.patch("/me", response_model=UserResponse)
 def update_me(
     body: UserUpdateRequest,
