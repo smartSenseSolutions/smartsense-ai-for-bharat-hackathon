@@ -1,8 +1,105 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.domain import ProjectInvitedVendor, Quote
 from app.schemas.domain import QuoteScoreRequest, NegotiationEmailRequest
+from app.services.email import search_rfp_threads_nylas
 from app.services.quotes import score_quotes, generate_negotiation_email
 
 router = APIRouter(prefix="/api/quotes", tags=["Quotes & Negotiation"])
+
+
+@router.get("/by-project/{project_id}")
+async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
+    """
+    Return quotations for a project.
+
+    Merges two sources:
+      1. DB quotes — parsed by the Nylas webhook (have price / delivery data).
+      2. Live Nylas search — finds threads matching "RFP-{project_id}" in the
+         subject, so results appear even before the webhook fires.
+    """
+    # ── invited vendor lookup ──────────────────────────────────────────────
+    invited = (
+        db.query(ProjectInvitedVendor)
+        .filter(ProjectInvitedVendor.project_id == project_id)
+        .all()
+    )
+    name_by_email = {iv.contact_email: iv.vendor_name for iv in invited if iv.contact_email}
+    invited_emails = set(name_by_email.keys())
+
+    result: list[dict] = []
+    known_thread_ids: set[str] = set()
+
+    # ── 1. DB-backed quotes (webhook-parsed, have price/delivery) ──────────
+    db_quotes = (
+        db.query(Quote)
+        .filter(Quote.project_id == project_id)
+        .order_by(Quote.created_at.desc())
+        .all()
+    )
+    for q in db_quotes:
+        sla = q.sla_details or {}
+        sender_email = sla.get("sender_email", "")
+        vendor_name = name_by_email.get(sender_email) or sla.get("sender_name") or sender_email
+        thread_id = sla.get("thread_id")
+        if thread_id:
+            known_thread_ids.add(thread_id)
+        result.append(
+            {
+                "id": q.id,
+                "project_id": q.project_id,
+                "vendor_name": vendor_name,
+                "sender_email": sender_email,
+                "price": q.price,
+                "currency": q.currency or "INR",
+                "status": q.status,
+                "delivery_timeline": sla.get("delivery_timeline"),
+                "notes": sla.get("notes"),
+                "email_subject": sla.get("email_subject"),
+                "thread_id": thread_id,
+                "message_id": sla.get("message_id"),
+                "created_at": q.created_at.isoformat() if q.created_at else None,
+            }
+        )
+
+    # ── 2. Live Nylas search — threads not yet in DB ───────────────────────
+    try:
+        nylas_threads = search_rfp_threads_nylas(project_id, invited_emails)
+        for t in nylas_threads:
+            if t["thread_id"] in known_thread_ids:
+                continue  # already represented by a DB quote
+            v_email = t["vendor_email"]
+            v_name = name_by_email.get(v_email) or t["vendor_name"] or v_email
+            created = (
+                datetime.utcfromtimestamp(t["latest_date"]).isoformat()
+                if t.get("latest_date")
+                else None
+            )
+            result.append(
+                {
+                    "id": t["thread_id"],
+                    "project_id": project_id,
+                    "vendor_name": v_name,
+                    "sender_email": v_email,
+                    "price": None,
+                    "currency": "INR",
+                    "status": "received",
+                    "delivery_timeline": None,
+                    "notes": None,
+                    "email_subject": t["subject"],
+                    "thread_id": t["thread_id"],
+                    "message_id": None,
+                    "created_at": created,
+                }
+            )
+    except Exception as exc:
+        print(f"[quotes] Nylas thread search error: {exc}")
+
+    return result
 
 
 @router.post("/score")

@@ -226,6 +226,7 @@ def send_rfp_email(
         "subject": subject,
         "body": html_body,
         "to": [{"name": vendor_name, "email": vendor_email}],
+        "reply_to": [{"name": "Procure AI", "email": settings.NYLAS_SENDER_EMAIL}],
     }
     if cc:
         request_body["cc"] = [{"email": addr} for addr in cc]
@@ -311,30 +312,234 @@ def send_bulk_rfp_emails(
 # ---------------------------------------------------------------------------
 
 
+def _addr_list(addrs) -> list[dict]:
+    """Normalise a Nylas address list to plain dicts regardless of SDK version."""
+    result = []
+    for p in addrs or []:
+        if isinstance(p, dict):
+            result.append({"name": p.get("name", ""), "email": p.get("email", "")})
+        else:
+            result.append(
+                {
+                    "name": getattr(p, "name", "") or "",
+                    "email": getattr(p, "email", "") or "",
+                }
+            )
+    return result
+
+
 def list_thread_messages(thread_id: str) -> list[dict]:
-    """Return all messages in an email thread (as plain dicts)."""
+    """Return all messages in an email thread (as plain dicts).
+
+    Searches both the sender grant and the inbound grant so that outgoing
+    RFP emails and vendor replies (which arrive at the Nylas inbound email)
+    are both included.
+    """
     nylas = get_nylas_client()
     grant_id = _require_grant_id()
 
-    response = nylas.messages.list(
-        identifier=grant_id,
-        query_params={"thread_id": thread_id},
-    )
+    # Collect raw messages from both grants
+    raw_messages = []
 
+    try:
+        response = nylas.messages.list(
+            identifier=grant_id,
+            query_params={"thread_id": thread_id},
+        )
+        raw_messages.extend(response.data)
+    except Exception:
+        pass
+
+    inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
+    if inbound_grant and inbound_grant != grant_id:
+        try:
+            response = nylas.messages.list(
+                identifier=inbound_grant,
+                query_params={"thread_id": thread_id},
+            )
+            raw_messages.extend(response.data)
+        except Exception:
+            pass
+
+    # Deduplicate by message ID
+    seen_ids: set[str] = set()
     result = []
-    for msg in response.data:
+    for msg in raw_messages:
+        if msg.id in seen_ids:
+            continue
+        seen_ids.add(msg.id)
+
+        attachments = []
+        for att in getattr(msg, "attachments", None) or []:
+            if getattr(att, "is_inline", False):
+                continue
+            attachments.append(
+                {
+                    "id": getattr(att, "id", ""),
+                    "filename": getattr(att, "filename", None) or "attachment",
+                    "content_type": getattr(att, "content_type", None)
+                    or "application/octet-stream",
+                    "size": getattr(att, "size", 0) or 0,
+                }
+            )
         result.append(
             {
                 "id": msg.id,
                 "subject": msg.subject,
-                "from": msg.from_,
-                "to": msg.to,
-                "body": msg.body,
+                "from": _addr_list(getattr(msg, "from_", None)),
+                "to": _addr_list(getattr(msg, "to", None)),
+                "body": msg.body or "",
                 "date": msg.date,
                 "thread_id": msg.thread_id,
+                "attachments": attachments,
             }
         )
     return result
+
+
+def search_rfp_threads_nylas(
+    project_id: str, invited_emails: set | None = None
+) -> list[dict]:
+    """
+    Search Nylas for all email threads whose subject contains RFP-{project_id}.
+    Searches both the sender grant (Gmail) and the inbound grant (Nylas virtual
+    email) so that outgoing RFPs and vendor replies are both visible.
+    Returns one dict per unique thread_id.
+    """
+    nylas = get_nylas_client()
+    grant_id = _require_grant_id()
+
+    # Collect messages from both grants
+    all_messages = []
+
+    # 1. Search the sender grant (Gmail — outgoing RFP emails)
+    try:
+        response = nylas.messages.list(
+            identifier=grant_id,
+            query_params={"q": f"subject:RFP-{project_id}", "limit": 50},
+        )
+        all_messages.extend(response.data)
+    except Exception as exc:
+        print(f"[email] Nylas sender grant thread search failed: {exc}")
+
+    # 2. Search the inbound grant (Nylas virtual email — vendor replies)
+    #    The virtual mailbox may not support Gmail-style 'q' search, so we
+    #    use the 'subject' query param and also filter client-side.
+    inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
+    subject_tag = f"RFP-{project_id}"
+    if inbound_grant and inbound_grant != grant_id:
+        try:
+            response = nylas.messages.list(
+                identifier=inbound_grant,
+                query_params={"subject": subject_tag, "limit": 50},
+            )
+            # Client-side filter: only keep messages whose subject contains
+            # the exact RFP tag for this project (case-insensitive).
+            tag_lower = subject_tag.lower()
+            for msg in response.data:
+                if tag_lower in (msg.subject or "").lower():
+                    all_messages.append(msg)
+        except Exception as exc:
+            print(f"[email] Nylas inbound grant thread search failed: {exc}")
+
+    if not all_messages:
+        return []
+
+    our_emails = {
+        settings.NYLAS_SENDER_EMAIL.lower(),
+        settings.SUPERUSER_EMAIL.lower(),
+    }
+
+    threads: dict[str, dict] = {}
+    for msg in all_messages:
+        tid = msg.thread_id or msg.id
+        to_addrs = _addr_list(getattr(msg, "to", None))
+        from_addrs = _addr_list(getattr(msg, "from_", None))
+        all_addrs = to_addrs + from_addrs
+
+        if tid not in threads:
+            vendor: dict = {}
+
+            # 1st priority: address that matches a known invited vendor
+            if invited_emails:
+                vendor = next(
+                    (a for a in all_addrs if a.get("email") in invited_emails),
+                    {},
+                )
+
+            # 2nd priority: any address not in our known sender set
+            if not vendor:
+                vendor = next(
+                    (
+                        a
+                        for a in all_addrs
+                        if a.get("email", "").lower() not in our_emails
+                    ),
+                    all_addrs[0] if all_addrs else {},
+                )
+
+            threads[tid] = {
+                "thread_id": tid,
+                "vendor_email": vendor.get("email", ""),
+                "vendor_name": vendor.get("name", ""),
+                "subject": msg.subject or "",
+                "latest_date": msg.date,
+                "message_count": 1,
+            }
+        else:
+            threads[tid]["message_count"] += 1
+            if msg.date and (
+                threads[tid]["latest_date"] is None
+                or msg.date > threads[tid]["latest_date"]
+            ):
+                threads[tid]["latest_date"] = msg.date
+
+    return list(threads.values())
+
+
+def download_attachment_content(
+    attachment_id: str, message_id: str
+) -> tuple[bytes, str, str]:
+    """Fetch attachment bytes from Nylas. Returns (content_bytes, content_type, filename).
+
+    Tries the sender grant first, then falls back to the inbound grant
+    (vendor replies with attachments live on the inbound grant).
+    Uses download_bytes() for the actual file content.
+    """
+    nylas = get_nylas_client()
+    grant_id = _require_grant_id()
+
+    grants_to_try = [grant_id]
+    inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
+    if inbound_grant and inbound_grant != grant_id:
+        grants_to_try.append(inbound_grant)
+
+    last_exc = None
+    for gid in grants_to_try:
+        try:
+            # Get metadata (filename, content_type) from find()
+            meta_response = nylas.attachments.find(
+                identifier=gid,
+                attachment_id=attachment_id,
+                query_params={"message_id": message_id},
+            )
+            att = meta_response.data
+            filename = getattr(att, "filename", None) or "attachment"
+            content_type = (
+                getattr(att, "content_type", None) or "application/octet-stream"
+            )
+
+            # Get actual file bytes from download_bytes()
+            content = nylas.attachments.download_bytes(
+                identifier=gid,
+                attachment_id=attachment_id,
+                query_params={"message_id": message_id},
+            )
+            return content, content_type, filename
+        except Exception as exc:
+            last_exc = exc
+
+    raise last_exc or RuntimeError("Failed to download attachment from any grant.")
 
 
 # ---------------------------------------------------------------------------
