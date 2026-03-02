@@ -290,12 +290,17 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
     keyword_hits: dict[str, dict] = {}
 
     # ── Phase 1: vector search on clean search_text ─────────────────────────
+    # OpenSearch cosinesimil scores = 1 + cosine_similarity (range [0, 2]).
+    # min_score filters out vendors whose cosine similarity is below the threshold
+    # before they ever reach RRF, preventing irrelevant results from being ranked.
+    vec_min_score = settings.VENDOR_SEARCH_VECTOR_MIN_SCORE
     embed_text = intent.search_text or query
     try:
         query_embedding = generate_embedding(embed_text)
         vector_response = client.search(
             index=VENDOR_INDEX_NAME,
             body={
+                "min_score": vec_min_score,
                 "size": candidates,
                 "query": {
                     "knn": {
@@ -312,7 +317,7 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
             vid = hit["_source"].get("vendor_id") or hit["_id"]
             vector_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
         print(
-            f"[search] vector phase: {len(vector_hits)} hits | embed: '{embed_text}'"
+            f"[search] vector phase: {len(vector_hits)} hits above {vec_min_score} | embed: '{embed_text}'"
         )
     except Exception as e:
         print(f"[search] vector phase failed: {e}")
@@ -344,19 +349,25 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
         return []
 
     # ── RRF score fusion ─────────────────────────────────────────────────────
+    # RRF determines rank order. Only vendors that passed the vector min_score
+    # threshold (i.e. have a genuine semantic match) are considered.
+    # Keyword-only hits are excluded — without a vector score we cannot verify
+    # absolute relevance, so they would pollute results with false positives.
     fused = _rrf_fuse(vector_hits, keyword_hits, k=rrf_k)
-
-    # Normalise RRF scores to [0, 1] using the theoretical maximum.
-    # max possible RRF = 2/(k+1): a document ranked #1 in both lists.
-    # This makes final_score directly interpretable as a match percentage.
-    max_rrf = 2.0 / (rrf_k + 1)
 
     results = []
     for vid, rrf_score in fused[:top_n]:
-        vendor_data = (vector_hits.get(vid) or keyword_hits[vid])["source"]
-        raw_vec = vector_hits.get(vid, {}).get("score", 0.0)
+        if vid not in vector_hits:
+            # No confirmed semantic similarity — skip to avoid irrelevant results.
+            continue
+        vendor_data = vector_hits[vid]["source"]
+        raw_vec = vector_hits[vid]["score"]
         raw_kw = keyword_hits.get(vid, {}).get("score", 0.0)
-        normalized_score = min(rrf_score / max_rrf, 1.0)
+
+        # final_score = cosine similarity, derived from the OpenSearch cosinesimil
+        # score formula: opensearch_score = 1 + cosine → cosine = score - 1.
+        # Maps to [0, 1] where 1.0 = perfect semantic match, 0.0 = orthogonal.
+        cosine_sim = max(0.0, min(1.0, raw_vec - 1.0))
 
         csv_certs: list[str] = vendor_data.get("certificates") or []
         doc_certs: list[str] = [
@@ -375,7 +386,7 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
         raw_details: list[dict] = vendor_data.get("certificate_details") or []
         print(
             f"[search] {vendor_data.get('vendor_name')}: "
-            f"rrf={rrf_score:.6f} norm={normalized_score:.4f} vec={raw_vec:.4f} kw={raw_kw:.4f}"
+            f"cosine={cosine_sim:.4f} rrf={rrf_score:.6f} vec={raw_vec:.4f} kw={raw_kw:.4f}"
         )
 
         results.append(
@@ -392,7 +403,7 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
                 "contact_email": vendor_data.get("contact_email", ""),
                 "mobile": vendor_data.get("mobile", ""),
                 "estd": vendor_data.get("estd"),
-                "final_score": round(normalized_score, 4),
+                "final_score": round(cosine_sim, 4),
                 "keyword_score": round(raw_kw, 4),
                 "vector_score": round(raw_vec, 4),
             }

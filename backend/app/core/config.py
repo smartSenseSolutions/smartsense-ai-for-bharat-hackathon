@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     VENDOR_SEARCH_TOP_N: int = 5  # number of top internal vendors to return
     VENDOR_SEARCH_EXTERNAL_N: int = 3  # number of Exa external vendors to return
     VENDOR_SEARCH_RRF_K: int = 60  # RRF constant k (Cormack 2009 default)
+    # OpenSearch cosinesimil scores = 1 + cosine_similarity (range [0, 2]).
+    # Vendors below this threshold are excluded before RRF to prevent false positives.
+    # 1.3 = cosine > 0.3 (30% semantic similarity required).  Raise to 1.4–1.5 to
+    # tighten results; lower toward 1.1 if too many relevant vendors are filtered out.
+    VENDOR_SEARCH_VECTOR_MIN_SCORE: float = 1.3
     VENDOR_SEARCH_CANDIDATE_MULTIPLIER: int = (
         10  # fetch top_n * multiplier candidates per phase
     )
