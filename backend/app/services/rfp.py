@@ -282,9 +282,9 @@ def generate_rfp_pdf(
         return ParagraphStyle(name, parent=base["Normal"], **kw)
 
     title_sty = sty(
-        "T", fontSize=22, fontName=_FONT_BOLD, textColor=gray900, spaceAfter=8
+        "T", fontSize=22, leading=28, fontName=_FONT_BOLD, textColor=gray900, spaceAfter=8
     )
-    sub_sty = sty("S", fontSize=12, fontName=_FONT, textColor=gray500, spaceAfter=4)
+    sub_sty = sty("S", fontSize=12, leading=16, fontName=_FONT, textColor=gray500, spaceAfter=4)
     meta_sty = sty("M", fontSize=8, fontName=_FONT, textColor=gray500)
     h_sty = sty(
         "H",

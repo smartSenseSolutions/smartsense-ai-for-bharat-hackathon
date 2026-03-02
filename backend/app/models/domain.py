@@ -47,6 +47,11 @@ class Project(Base):
     # Relationships
     project_vendors = relationship("ProjectVendor", back_populates="project")
     quotes = relationship("Quote", back_populates="project")
+    invited_vendors = relationship(
+        "ProjectInvitedVendor",
+        back_populates="project",
+        order_by="ProjectInvitedVendor.invited_at",
+    )
 
 
 class ProjectVendor(Base):
@@ -123,6 +128,26 @@ class VendorDocument(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     vendor = relationship("Vendor", back_populates="documents")
+
+
+class ProjectInvitedVendor(Base):
+    """Denormalised record of every vendor invited to an RFP project.
+
+    vendor_id is stored as a plain string (no FK) so that both internal DB
+    vendors and externally-discovered (AI) vendors can be tracked.
+    """
+
+    __tablename__ = "project_invited_vendors"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+    vendor_id = Column(String, nullable=True)  # None for purely external vendors
+    vendor_name = Column(String, nullable=False)
+    contact_email = Column(String, nullable=True)
+    products = Column(String, nullable=True)  # comma-joined product list
+    invited_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="invited_vendors")
 
 
 class SearchHistory(Base):

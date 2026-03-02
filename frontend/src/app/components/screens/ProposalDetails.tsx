@@ -151,19 +151,22 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
 }
 
 // Invite Phase Component
+interface InvitedVendorRecord {
+  id: string;
+  vendor_id: string | null;
+  vendor_name: string;
+  contact_email: string | null;
+  products: string | null;
+  invited_at: string;
+}
+
 function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChange?: (status: string) => void }) {
   const [activeTab, setActiveTab] = useState<'search' | 'invited'>('search');
-  const [vendors, setVendors] = useState([
-    { id: '1', name: 'TechDistributor Inc.', email: 'contact@techdist.com', category: 'Medical Devices', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: '2', name: 'Global Electronics Supply', email: 'info@globalsupply.com', category: 'Laboratory Equipment', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: '3', name: 'Enterprise Solutions Co.', email: 'sales@enterprise.com', category: 'Pharmaceutical Supplies', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: '4', name: 'MedSupply International', email: 'orders@medsupply.com', category: 'Diagnostic Tools', status: 'invited', invitedAt: '21 Jan 2026' },
-    { id: '5', name: 'Healthcare Distributors', email: 'info@healthdist.com', category: 'Medical Consumables', status: 'invited', invitedAt: '21 Jan 2026' },
-  ]);
+  const [invitedVendorsList, setInvitedVendorsList] = useState<InvitedVendorRecord[]>([]);
+  const [isLoadingInvited, setIsLoadingInvited] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
-  const [invitedVendors, setInvitedVendors] = useState<string[]>([]);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [selectedVendorForPanel, setSelectedVendorForPanel] = useState<any>(null);
 
@@ -173,11 +176,39 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
   const [isExternalLoading, setIsExternalLoading] = useState(false);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
 
+  // Derive the set of invited vendor IDs for the side-panel "Invite sent" badge
+  const invitedVendors = invitedVendorsList
+    .map((v) => v.vendor_id)
+    .filter(Boolean) as string[];
+
+  const projectId = proposal?.id?.startsWith('RFP-')
+    ? proposal.id.replace('RFP-', '')
+    : proposal?.id;
+
+  const fetchInvitedVendors = async () => {
+    if (!projectId) return;
+    setIsLoadingInvited(true);
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/${projectId}/invited-vendors`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        setInvitedVendorsList(await res.json());
+      }
+    } catch {
+      // silently ignore — table just stays empty
+    } finally {
+      setIsLoadingInvited(false);
+    }
+  };
+
   useEffect(() => {
+    fetchInvitedVendors();
     if (proposal && proposal.status === 'published' && proposal.title) {
       fireSearch(proposal.title);
     }
-  }, [proposal]);
+  }, [proposal?.id]);
 
   const fireSearch = (query: string) => {
     const trimmed = query.trim();
@@ -247,18 +278,16 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
   const toDetailVendor = (r: AIVendorResult) => ({
     id: r.vendor_id,
     name: r.vendor_name,
-    category: r.products.length > 0 ? r.products[0] : 'General Supplies',
-    location: r.location || 'Unknown',
-    yearsOfExperience: r.estd ? new Date().getFullYear() - r.estd : 5,
-    rating: (r.final_score * 5).toFixed(1),
-    certificates: r.certificates,
-    certificate_details: r.certificate_details,
+    country: r.location || '',
+    products: r.products?.join(', ') ?? '',
     trustScore: Math.round(r.final_score * 100),
-    contact_email: r.contact_email,
-    mobile: r.mobile,
-    website: r.website,
-    aiTags: [r.source === 'internal' ? 'Verified Partner' : 'AI Discovered'],
-    description: r.description
+    certifications: r.certificates ?? [],
+    certificate_details: r.certificate_details ?? [],
+    website: r.website ?? '',
+    contact_email: r.contact_email ?? '',
+    mobile: r.mobile ?? '',
+    estd: r.estd,
+    source: r.source,
   });
 
   const handleCardClick = (vendor: AIVendorResult, e: React.MouseEvent) => {
@@ -274,11 +303,6 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
     if (selectedVendors.length === 0) return;
     setIsSendingInvites(true);
 
-    // Extract project_id from proposal.id (format: "RFP-{project_id}")
-    const projectId = proposal.id?.startsWith('RFP-')
-      ? proposal.id.replace('RFP-', '')
-      : proposal.id;
-
     // Build vendors list from search results
     const allResults = [...internalResults, ...externalResults];
     const vendorsToInvite = selectedVendors
@@ -288,6 +312,7 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
         id: r!.vendor_id,
         name: r!.vendor_name,
         contact_email: r!.contact_email || '',
+        products: r!.products?.join(', ') ?? '',
       }));
 
     const token = localStorage.getItem('auth_token');
@@ -315,7 +340,8 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
       const sentCount = data.results?.filter((r: any) => r.success).length ?? 0;
       const failedCount = (data.results?.length ?? 0) - sentCount;
 
-      setInvitedVendors(prev => [...prev, ...selectedVendors]);
+      // Refresh the invited vendors list from the backend
+      await fetchInvitedVendors();
       if (failedCount > 0) {
         toast.warning(`Sent ${sentCount} invite(s), ${failedCount} failed`);
       } else {
@@ -476,7 +502,7 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
           onClick={() => setActiveTab('invited')}
           className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'invited' ? 'text-[#3B82F6]' : 'text-gray-600 hover:text-gray-900'}`}
         >
-          Invited Vendors ({vendors.length + invitedVendors.length})
+          Invited Vendors ({invitedVendorsList.length})
           {activeTab === 'invited' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6]"></div>}
         </button>
       </div>
@@ -597,120 +623,234 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
         </div>
       ) : (
         <div className="overflow-y-auto hide-scrollbar" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Vendor Name</th>
-                  <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Email</th>
-                  <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Category</th>
-                  <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Invited At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {vendors.map((vendor) => (
-                  <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3"><span className="text-sm font-medium text-gray-900">{vendor.name}</span></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600">{vendor.email}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3"><span className="text-sm text-gray-600">{vendor.category}</span></td>
-                    <td className="px-4 py-3"><Badge className="bg-blue-50 text-[#3B82F6] border-0 text-xs px-2 py-0.5">Invited</Badge></td>
-                    <td className="px-4 py-3"><span className="text-sm text-gray-600">{vendor.invitedAt}</span></td>
+          {isLoadingInvited ? (
+            <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+              Loading invited vendors…
+            </div>
+          ) : invitedVendorsList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+              <Users className="w-8 h-8 opacity-40" />
+              <span className="text-sm">No vendors invited yet</span>
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Vendor Name</th>
+                    <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Email</th>
+                    <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Products</th>
+                    <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Status</th>
+                    <th className="text-left text-xs font-medium text-gray-600 px-4 py-3">Invited At</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {invitedVendorsList.map((vendor) => (
+                    <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3"><span className="text-sm font-medium text-gray-900">{vendor.vendor_name}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">{vendor.contact_email || '—'}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><span className="text-sm text-gray-600">{vendor.products || '—'}</span></td>
+                      <td className="px-4 py-3"><Badge className="bg-blue-50 text-[#3B82F6] border-0 text-xs px-2 py-0.5">Invited</Badge></td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-gray-600">
+                          {new Date(vendor.invited_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {sidePanelOpen && selectedVendorForPanel && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setSidePanelOpen(false)} />
-          <div className="fixed top-0 right-0 h-full w-[480px] bg-white shadow-lg z-[70] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-[#eeeff1] px-6 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-semibold text-gray-900">{selectedVendorForPanel.name}</h2>
-                <button onClick={() => setSidePanelOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {selectedVendorForPanel.aiTags && selectedVendorForPanel.aiTags.length > 0 && (
-                  <Badge className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0">
-                    <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                    {selectedVendorForPanel.aiTags[0]}
-                  </Badge>
-                )}
-              </div>
+        <div
+          className="fixed inset-0 bg-black/20 z-[60] flex items-center justify-end"
+          onClick={() => setSidePanelOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl h-full bg-white shadow-2xl overflow-y-auto flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sticky header */}
+            <div className="sticky top-0 bg-white border-b border-[#eeeff1] p-4 flex items-center justify-between z-10">
+              <h2 className="text-xl font-semibold text-gray-900">Vendor Details</h2>
+              <button onClick={() => setSidePanelOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="px-6 py-6 space-y-6">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Company Overview</h3>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Category</span><span className="text-xs text-gray-900">{selectedVendorForPanel.category}</span></div>
-                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Location</span><span className="text-xs text-gray-900">{selectedVendorForPanel.location}</span></div>
-                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Experience</span><span className="text-xs text-gray-900">{selectedVendorForPanel.yearsOfExperience} years in business</span></div>
-                  <div className="flex items-start gap-2"><span className="text-xs text-gray-500 min-w-[100px]">Rating</span><span className="text-xs text-gray-900">{selectedVendorForPanel.rating} ⭐</span></div>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+              {/* Name + badge + trust score */}
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-2xl font-bold text-gray-900">{selectedVendorForPanel.name}</h3>
+                    {selectedVendorForPanel.source === 'internal' ? (
+                      <Badge className="text-xs px-2 py-0.5 bg-green-100 text-green-700 border-0">
+                        <Shield className="w-3 h-3 mr-1 inline" />
+                        Verified Partner
+                      </Badge>
+                    ) : (
+                      <Badge className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 border-0">
+                        <Sparkles className="w-3 h-3 mr-1 inline" />
+                        AI Discovered
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedVendorForPanel.country && (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span className="text-sm">{selectedVendorForPanel.country}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-green-600">{selectedVendorForPanel.trustScore}%</p>
+                  <p className="text-xs text-gray-400">AI Match Score</p>
                 </div>
               </div>
 
-              {selectedVendorForPanel.certificates && selectedVendorForPanel.certificates.length > 0 && (
+              {/* Key info grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {selectedVendorForPanel.estd && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Established</p>
+                    <p className="text-sm font-semibold text-gray-900">{selectedVendorForPanel.estd}</p>
+                    <p className="text-xs text-gray-400">{new Date().getFullYear() - selectedVendorForPanel.estd} years in business</p>
+                  </div>
+                )}
+                {selectedVendorForPanel.certifications?.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Certifications</p>
+                    <p className="text-sm font-semibold text-gray-900">{selectedVendorForPanel.certifications.length}</p>
+                    <p className="text-xs text-gray-400">verified certificates</p>
+                  </div>
+                )}
+                {selectedVendorForPanel.contact_email && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Email</p>
+                    <p className="text-sm font-semibold text-gray-900 break-all">{selectedVendorForPanel.contact_email}</p>
+                  </div>
+                )}
+                {selectedVendorForPanel.mobile && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Phone</p>
+                    <p className="text-sm font-semibold text-gray-900">{selectedVendorForPanel.mobile}</p>
+                  </div>
+                )}
+                {selectedVendorForPanel.website && (
+                  <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                    <p className="text-xs text-gray-500 mb-0.5">Website</p>
+                    <a
+                      href={selectedVendorForPanel.website.startsWith('http') ? selectedVendorForPanel.website : `https://${selectedVendorForPanel.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {selectedVendorForPanel.website}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Products & Services */}
+              {selectedVendorForPanel.products && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Certifications</h3>
+                  <p className="text-sm font-semibold text-gray-900 mb-2">Products &amp; Services</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{selectedVendorForPanel.products}</p>
+                </div>
+              )}
+
+              {/* Certification badges */}
+              {selectedVendorForPanel.certifications?.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 mb-2">Certifications</p>
                   <div className="flex flex-wrap gap-2">
-                    {selectedVendorForPanel.certificates.map((cert: string, idx: number) => (
-                      <Badge key={idx} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 border-0">{cert}</Badge>
+                    {selectedVendorForPanel.certifications.map((cert: string, i: number) => (
+                      <Badge key={i} className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200">
+                        <Award className="w-3 h-3 mr-1 inline" />
+                        {cert}
+                      </Badge>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Products & Services</h3>
-                <p className="text-xs text-gray-600 mb-3">{selectedVendorForPanel.description || 'Specialized in ' + selectedVendorForPanel.category.toLowerCase() + ' with a focus on quality and reliability.'}</p>
-                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">High-quality medical-grade products</span></div>
-                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">FDA approved and certified</span></div>
-                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">Fast delivery across India</span></div>
-                  <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-xs text-gray-900">24/7 customer support</span></div>
+              {/* Certificate documents */}
+              {selectedVendorForPanel.certificate_details?.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 mb-3">Certificate Documents</p>
+                  <div className="space-y-3">
+                    {selectedVendorForPanel.certificate_details.map((doc: CertificateDetail, i: number) => (
+                      <div key={i} className="border border-[#eeeff1] rounded-xl p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900 leading-snug">
+                            {doc.document_name || doc.document_type || 'Certificate'}
+                          </p>
+                          {doc.document_type && (
+                            <Badge className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 border-0">
+                              {doc.document_type}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1">
+                          {doc.issuing_authority && (
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Issued by</p>
+                              <p className="text-xs font-medium text-gray-700">{doc.issuing_authority}</p>
+                            </div>
+                          )}
+                          {doc.issued_to && (
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Issued to</p>
+                              <p className="text-xs font-medium text-gray-700">{doc.issued_to}</p>
+                            </div>
+                          )}
+                          {doc.issue_date && (
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Issue date</p>
+                              <p className="text-xs font-medium text-gray-700">{doc.issue_date}</p>
+                            </div>
+                          )}
+                          {doc.expiry_date && (
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Expiry date</p>
+                              <p className="text-xs font-medium text-gray-700">{doc.expiry_date}</p>
+                            </div>
+                          )}
+                        </div>
+                        {doc.document_url && (
+                          <a
+                            href={doc.document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline pt-1"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            View document
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Contact Information</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.contact_email || `contact@${selectedVendorForPanel.name.toLowerCase().replace(/\s+/g, '')}.com`}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.mobile || '+91 98765 43210'}</span>
-                  </div>
-                  {selectedVendorForPanel.website && (
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-gray-400" />
-                      <a href={selectedVendorForPanel.website.startsWith('http') ? selectedVendorForPanel.website : `https://${selectedVendorForPanel.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                        {selectedVendorForPanel.website}
-                      </a>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs text-gray-900">{selectedVendorForPanel.location}</span>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-[#eeeff1] px-6 py-4">
+            {/* Sticky bottom CTA */}
+            <div className="sticky bottom-0 bg-white border-t border-[#eeeff1] px-5 py-4">
               {invitedVendors.includes(selectedVendorForPanel.id) ? (
                 <Badge className="w-full justify-center text-center text-xs px-3 py-2 bg-green-50 text-green-700 border-0">
                   Invite sent
@@ -725,7 +865,7 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -59,3 +59,16 @@ class ProjectVendorResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ProjectInvitedVendorResponse(BaseModel):
+    id: str
+    project_id: str
+    vendor_id: Optional[str]
+    vendor_name: str
+    contact_email: Optional[str]
+    products: Optional[str]
+    invited_at: datetime
+
+    class Config:
+        from_attributes = True

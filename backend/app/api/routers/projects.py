@@ -4,8 +4,8 @@ from typing import List
 import uuid
 
 from app.core.database import get_db
-from app.models.domain import Project, ProjectStatus
-from app.schemas.domain import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.models.domain import Project, ProjectStatus, ProjectInvitedVendor
+from app.schemas.domain import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectInvitedVendorResponse
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -62,3 +62,14 @@ def update_project(
     db.commit()
     db.refresh(db_project)
     return db_project
+
+
+@router.get("/{project_id}/invited-vendors", response_model=List[ProjectInvitedVendorResponse])
+def get_invited_vendors(project_id: str, db: Session = Depends(get_db)):
+    """Return all vendors invited to a project, ordered by invitation time."""
+    return (
+        db.query(ProjectInvitedVendor)
+        .filter(ProjectInvitedVendor.project_id == project_id)
+        .order_by(ProjectInvitedVendor.invited_at)
+        .all()
+    )

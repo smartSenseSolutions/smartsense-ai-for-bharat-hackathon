@@ -1,4 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+import uuid
+from datetime import datetime
+
+from app.core.database import get_db
+from app.models.domain import ProjectInvitedVendor
 from app.schemas.rfp import (
     RFPGenerateRequest,
     RFPGenerateResponse,
@@ -66,7 +72,7 @@ def publish_rfp(request: RFPPublishRequest):
 
 
 @router.post("/distribute")
-async def distribute_rfp(request: RFPDistributeRequest):
+async def distribute_rfp(request: RFPDistributeRequest, db: Session = Depends(get_db)):
     """
     Distribute the finalized RFP to selected vendors via email.
     Downloads the RFP PDF from S3 and sends it as an attachment
@@ -113,6 +119,36 @@ async def distribute_rfp(request: RFPDistributeRequest):
 
     sent_count = sum(1 for r in results if r["success"])
     failed_count = len(results) - sent_count
+
+    # Persist invited vendors for successfully sent emails.
+    # Skip vendors already recorded for this project (idempotent on re-invite).
+    existing_names = {
+        row.vendor_name
+        for row in db.query(ProjectInvitedVendor.vendor_name)
+        .filter(ProjectInvitedVendor.project_id == request.project_id)
+        .all()
+    }
+    vendor_map = {v.name: v for v in request.vendors}
+    now = datetime.utcnow()
+    for result in results:
+        if not result["success"]:
+            continue
+        vendor_name = result["vendor_name"]
+        if vendor_name in existing_names:
+            continue
+        v = vendor_map.get(vendor_name)
+        db.add(
+            ProjectInvitedVendor(
+                id=str(uuid.uuid4()),
+                project_id=request.project_id,
+                vendor_id=v.id if v else None,
+                vendor_name=vendor_name,
+                contact_email=v.contact_email if v else None,
+                products=v.products if v else None,
+                invited_at=now,
+            )
+        )
+    db.commit()
 
     return {
         "status": "success" if failed_count == 0 else "partial",
