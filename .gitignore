@@ -101,4 +101,12 @@ CLAUDE.md
 
 # Package Manager Lock Files
 package-lock.json
+
+# Test files and scratch scripts
 tests/
+backend/tests/
+scripts/
+
+# Migration artifacts (auto-generated, not for commit)
+# Uncomment below if you want to ignore Alembic migrations too
+# backend/migrations/versions/

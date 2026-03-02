@@ -17,10 +17,17 @@ class RFPGenerateResponse(BaseModel):
     evaluation_criteria: List[str]
 
 
+class RFPDistributeVendor(BaseModel):
+    id: str
+    name: str
+    contact_email: str
+
+
 class RFPDistributeRequest(BaseModel):
     project_id: str
-    vendor_ids: List[str]
-    rfp_data: dict
+    project_name: str
+    vendors: List[RFPDistributeVendor]
+    rfp_data: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
