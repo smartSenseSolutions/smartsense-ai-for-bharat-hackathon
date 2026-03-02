@@ -171,10 +171,11 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
   const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
   const [isInternalLoading, setIsInternalLoading] = useState(false);
   const [isExternalLoading, setIsExternalLoading] = useState(false);
+  const [isSendingInvites, setIsSendingInvites] = useState(false);
 
   useEffect(() => {
     if (proposal && proposal.status === 'published' && proposal.title) {
-       fireSearch(proposal.title);
+      fireSearch(proposal.title);
     }
   }, [proposal]);
 
@@ -269,13 +270,68 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
     setSidePanelOpen(true);
   };
 
-  const handleSendInvites = () => {
-    setInvitedVendors(prev => [...prev, ...selectedVendors]);
-    toast.success('Invites sent to ' + selectedVendors.length + ' vendor(s)');
-    if (proposal.status !== 'in-progress' && proposal.status !== 'completed') {
-      onStatusChange?.('in-progress');
+  const handleSendInvites = async () => {
+    if (selectedVendors.length === 0) return;
+    setIsSendingInvites(true);
+
+    // Extract project_id from proposal.id (format: "RFP-{project_id}")
+    const projectId = proposal.id?.startsWith('RFP-')
+      ? proposal.id.replace('RFP-', '')
+      : proposal.id;
+
+    // Build vendors list from search results
+    const allResults = [...internalResults, ...externalResults];
+    const vendorsToInvite = selectedVendors
+      .map(id => allResults.find(r => r.vendor_id === id))
+      .filter(Boolean)
+      .map(r => ({
+        id: r!.vendor_id,
+        name: r!.vendor_name,
+        contact_email: r!.contact_email || '',
+      }));
+
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(`${API_BASE}/api/rfp/distribute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          project_name: proposal.title || proposal.projectName || '',
+          vendors: vendorsToInvite,
+          rfp_data: proposal.rfpData || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(body || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      const sentCount = data.results?.filter((r: any) => r.success).length ?? 0;
+      const failedCount = (data.results?.length ?? 0) - sentCount;
+
+      setInvitedVendors(prev => [...prev, ...selectedVendors]);
+      if (failedCount > 0) {
+        toast.warning(`Sent ${sentCount} invite(s), ${failedCount} failed`);
+      } else {
+        toast.success(`Invites sent to ${sentCount} vendor(s)`);
+      }
+
+      if (proposal.status !== 'in-progress' && proposal.status !== 'completed') {
+        onStatusChange?.('in-progress');
+      }
+      setSelectedVendors([]);
+    } catch (err: any) {
+      console.error('Send invites failed:', err);
+      toast.error('Failed to send invites: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSendingInvites(false);
     }
-    setSelectedVendors([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -340,10 +396,10 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               </div>
             ) : (
               <div className="mb-2">
-                 <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
-                    <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
-                    External
-                 </Badge>
+                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
+                  <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
+                  External
+                </Badge>
               </div>
             )}
 
@@ -446,9 +502,18 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
               <span className="text-sm font-medium text-gray-900">
                 {selectedVendors.length} vendor{selectedVendors.length !== 1 ? 's' : ''} selected
               </span>
-              <Button onClick={handleSendInvites} className="bg-[#3B82F6] hover:bg-[#2563EB] h-9 px-4 text-sm">
-                <Send className="w-4 h-4 mr-2" />
-                Send Invite{selectedVendors.length !== 1 ? 's' : ''}
+              <Button onClick={handleSendInvites} disabled={isSendingInvites} className="bg-[#3B82F6] hover:bg-[#2563EB] h-9 px-4 text-sm disabled:opacity-60">
+                {isSendingInvites ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Send Invite{selectedVendors.length !== 1 ? 's' : ''}
+                  </>
+                )}
               </Button>
             </div>
           )}
@@ -501,7 +566,7 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
                     </div>
                   )}
                 </div>
-                
+
                 {isExternalLoading ? (
                   <div className="grid grid-cols-2 gap-4">
                     {[1, 2].map(i => (

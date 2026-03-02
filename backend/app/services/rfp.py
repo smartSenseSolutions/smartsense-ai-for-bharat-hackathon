@@ -178,8 +178,9 @@ def _strip_html(text: str) -> str:
 
 def _logo_page_callback(logo_url: str):
     """
-    Returns a ReportLab onPage callback that draws the company logo in the
-    top-right corner of every page.  Returns None if the image cannot be fetched.
+    Returns a ReportLab onPage callback that draws the company logo as a
+    semi-transparent centred watermark on every page.
+    Returns None if the image cannot be fetched.
     """
     from urllib.request import urlopen
     from reportlab.lib.utils import ImageReader
@@ -195,19 +196,17 @@ def _logo_page_callback(logo_url: str):
         return None
 
     page_width, page_height = A4
-    logo_max_w = 3.5 * cm
-    logo_max_h = 1.5 * cm
-    margin = 2.5 * cm
+    wm_size = 10 * cm  # watermark bounding box
 
     def _draw(canvas, doc):
         canvas.saveState()
-        # Place logo flush to the top-right, within the top margin area
+        canvas.setFillAlpha(0.06)  # very subtle
         canvas.drawImage(
             img_reader,
-            x=page_width - margin - logo_max_w,
-            y=page_height - margin + 0.3 * cm,
-            width=logo_max_w,
-            height=logo_max_h,
+            x=(page_width - wm_size) / 2,
+            y=(page_height - wm_size) / 2,
+            width=wm_size,
+            height=wm_size,
             mask="auto",
             preserveAspectRatio=True,
         )
@@ -230,6 +229,22 @@ def generate_rfp_pdf(
     from reportlab.lib.units import cm
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    # Register DejaVu Sans — supports full Unicode including ₹ (U+20B9)
+    _DEJAVU_DIR = "/usr/share/fonts/truetype/dejavu"
+    try:
+        pdfmetrics.registerFont(TTFont("DejaVuSans", f"{_DEJAVU_DIR}/DejaVuSans.ttf"))
+        pdfmetrics.registerFont(
+            TTFont("DejaVuSans-Bold", f"{_DEJAVU_DIR}/DejaVuSans-Bold.ttf")
+        )
+        _FONT = "DejaVuSans"
+        _FONT_BOLD = "DejaVuSans-Bold"
+    except Exception:
+        # Fallback to built-in Helvetica if DejaVu is unavailable
+        _FONT = "Helvetica"
+        _FONT_BOLD = "Helvetica-Bold"
     from reportlab.platypus import (
         SimpleDocTemplate,
         Paragraph,
@@ -260,24 +275,45 @@ def generate_rfp_pdf(
     gray400 = colors.HexColor("#9CA3AF")
     gray200 = colors.HexColor("#E5E7EB")
     gray100 = colors.HexColor("#F3F4F6")
-    gray50  = colors.HexColor("#F9FAFB")
+    gray50 = colors.HexColor("#F9FAFB")
     blue600 = colors.HexColor("#2563EB")
 
     def sty(name, **kw):
         return ParagraphStyle(name, parent=base["Normal"], **kw)
 
-    title_sty   = sty("T", fontSize=22, fontName="Helvetica-Bold", textColor=gray900, spaceAfter=2)
-    sub_sty     = sty("S", fontSize=12, fontName="Helvetica",      textColor=gray500, spaceAfter=2)
-    meta_sty    = sty("M", fontSize=8,  fontName="Helvetica",      textColor=gray500)
-    h_sty       = sty("H", fontSize=8,  fontName="Helvetica-Bold", textColor=gray900,
-                       spaceBefore=14, spaceAfter=6, borderPadding=(0,0,2,0))
-    body_sty    = sty("B", fontSize=9,  fontName="Helvetica",      textColor=gray700,
-                       spaceAfter=4, leading=14)
-    label_sty   = sty("L", fontSize=8,  fontName="Helvetica-Bold", textColor=gray500)
-    bullet_sty  = sty("BU", fontSize=9, fontName="Helvetica",      textColor=gray700,
-                       leftIndent=12, spaceAfter=3, leading=14)
-    footer_sty  = sty("F", fontSize=7,  fontName="Helvetica",      textColor=gray400,
-                       leading=10)
+    title_sty = sty(
+        "T", fontSize=22, fontName=_FONT_BOLD, textColor=gray900, spaceAfter=8
+    )
+    sub_sty = sty("S", fontSize=12, fontName=_FONT, textColor=gray500, spaceAfter=4)
+    meta_sty = sty("M", fontSize=8, fontName=_FONT, textColor=gray500)
+    h_sty = sty(
+        "H",
+        fontSize=8,
+        fontName=_FONT_BOLD,
+        textColor=gray900,
+        spaceBefore=14,
+        spaceAfter=6,
+        borderPadding=(0, 0, 2, 0),
+    )
+    body_sty = sty(
+        "B",
+        fontSize=9,
+        fontName=_FONT,
+        textColor=gray700,
+        spaceAfter=4,
+        leading=14,
+    )
+    label_sty = sty("L", fontSize=8, fontName=_FONT_BOLD, textColor=gray500)
+    bullet_sty = sty(
+        "BU",
+        fontSize=9,
+        fontName=_FONT,
+        textColor=gray700,
+        leftIndent=12,
+        spaceAfter=3,
+        leading=14,
+    )
+    footer_sty = sty("F", fontSize=7, fontName=_FONT, textColor=gray400, leading=10)
 
     def h(v):
         return _strip_html(str(v)) if v else ""
@@ -288,15 +324,21 @@ def generate_rfp_pdf(
     story = []
 
     # ── Header ───────────────────────────────────────────────────────────────
-    story.append(Paragraph(h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")), title_sty))
+    story.append(
+        Paragraph(h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")), title_sty)
+    )
     story.append(Paragraph(h(project_name or rfp_data.get("projectName", "")), sub_sty))
     story.append(Spacer(1, 4))
 
     meta_rows = [
-        [Paragraph("<b>Document No.</b>", label_sty),
-         Paragraph(h(rfp_data.get("documentNo", "")), meta_sty)],
-        [Paragraph("<b>Date</b>", label_sty),
-         Paragraph(h(rfp_data.get("documentDate", "")), meta_sty)],
+        [
+            Paragraph("<b>Document No.</b>", label_sty),
+            Paragraph(h(rfp_data.get("documentNo", "")), meta_sty),
+        ],
+        [
+            Paragraph("<b>Date</b>", label_sty),
+            Paragraph(h(rfp_data.get("documentDate", "")), meta_sty),
+        ],
     ]
     t = Table(meta_rows, colWidths=[3.5 * cm, W - 3.5 * cm])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -315,24 +357,31 @@ def generate_rfp_pdf(
     # ── Product Requirements ─────────────────────────────────────────────────
     story.append(section("1. PRODUCT REQUIREMENTS"))
     prod_rows = [
-        ["Product Name",       h(rfp_data.get("productName", ""))],
-        ["Quantity Required",  h(rfp_data.get("quantity", ""))],
-        ["Delivery Timeline",  h(rfp_data.get("deliveryTimeline", ""))],
-        ["Budget Allocation",  h(rfp_data.get("budget", ""))],
+        ["Product Name", h(rfp_data.get("productName", ""))],
+        ["Quantity Required", h(rfp_data.get("quantity", ""))],
+        ["Delivery Timeline", h(rfp_data.get("deliveryTimeline", ""))],
+        ["Budget Allocation", h(rfp_data.get("budget", ""))],
     ]
     if rfp_data.get("rfpDeadline"):
         prod_rows.append(["Submission Deadline", h(rfp_data["rfpDeadline"])])
     pt = Table(
-        [[Paragraph(f"<b>{r[0]}</b>", label_sty), Paragraph(r[1], body_sty)] for r in prod_rows],
+        [
+            [Paragraph(f"<b>{r[0]}</b>", label_sty), Paragraph(r[1], body_sty)]
+            for r in prod_rows
+        ],
         colWidths=[5 * cm, W - 5 * cm],
     )
-    pt.setStyle(TableStyle([
-        ("VALIGN",          (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS",  (0, 0), (-1, -1), [gray50, colors.white]),
-        ("TOPPADDING",      (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",   (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",     (0, 0), (-1, -1), 8),
-    ]))
+    pt.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [gray50, colors.white]),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
     story.append(pt)
     story.append(Spacer(1, 6))
 
@@ -372,24 +421,38 @@ def generate_rfp_pdf(
     criteria = rfp_data.get("evaluationCriteria", [])
     if criteria:
         story.append(section("6. EVALUATION CRITERIA"))
-        story.append(Paragraph("Proposals will be evaluated based on the following criteria:", body_sty))
+        story.append(
+            Paragraph(
+                "Proposals will be evaluated based on the following criteria:", body_sty
+            )
+        )
         ct_data = [
-            [Paragraph("<b>Criteria</b>", label_sty), Paragraph("<b>Weight</b>", label_sty)]
+            [
+                Paragraph("<b>Criteria</b>", label_sty),
+                Paragraph("<b>Weight</b>", label_sty),
+            ]
         ] + [
-            [Paragraph(h(c.get("name", "")), body_sty), Paragraph(h(c.get("weight", "")), body_sty)]
+            [
+                Paragraph(h(c.get("name", "")), body_sty),
+                Paragraph(h(c.get("weight", "")), body_sty),
+            ]
             for c in criteria
         ]
         ct = Table(ct_data, colWidths=[W - 4 * cm, 4 * cm])
-        ct.setStyle(TableStyle([
-            ("BACKGROUND",      (0, 0), (-1, 0), gray100),
-            ("ROWBACKGROUNDS",  (0, 1), (-1, -1), [colors.white, gray50]),
-            ("GRID",            (0, 0), (-1, -1), 0.5, gray200),
-            ("ALIGN",           (1, 0), (1, -1), "CENTER"),
-            ("VALIGN",          (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING",      (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING",   (0, 0), (-1, -1), 5),
-            ("LEFTPADDING",     (0, 0), (-1, -1), 8),
-        ]))
+        ct.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), gray100),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, gray50]),
+                    ("GRID", (0, 0), (-1, -1), 0.5, gray200),
+                    ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
         story.append(ct)
         story.append(Spacer(1, 6))
 
@@ -424,20 +487,24 @@ def generate_rfp_pdf(
         story.append(Spacer(1, 6))
 
     # ── Footer ───────────────────────────────────────────────────────────────
-    story.append(HRFlowable(width="100%", thickness=0.75, color=gray200, spaceBefore=12))
-    story.append(Paragraph(
-        "This document is confidential and proprietary. All information contained herein is "
-        "for the exclusive use of the intended recipient(s). Unauthorized disclosure, distribution, "
-        "or copying is strictly prohibited.",
-        footer_sty,
-    ))
+    story.append(
+        HRFlowable(width="100%", thickness=0.75, color=gray200, spaceBefore=12)
+    )
+    story.append(
+        Paragraph(
+            "This document is confidential and proprietary. All information contained herein is "
+            "for the exclusive use of the intended recipient(s). Unauthorized disclosure, distribution, "
+            "or copying is strictly prohibited.",
+            footer_sty,
+        )
+    )
 
     logo_cb = _logo_page_callback(company_logo_url) if company_logo_url else None
-    doc.build(
-        story,
-        onFirstPage=logo_cb,
-        onLaterPages=logo_cb,
-    )
+    build_kwargs = {}
+    if logo_cb:
+        build_kwargs["onFirstPage"] = logo_cb
+        build_kwargs["onLaterPages"] = logo_cb
+    doc.build(story, **build_kwargs)
     return buffer.getvalue()
 
 
@@ -460,7 +527,9 @@ def publish_rfp_to_s3(
     # Use the bucket-specific region if set, otherwise fall back to the global AWS region
     region = settings.S3_RFP_BUCKET_REGION or settings.AWS_REGION
 
-    pdf_bytes = generate_rfp_pdf(project_name, rfp_data, company_logo_url=company_logo_url)
+    pdf_bytes = generate_rfp_pdf(
+        project_name, rfp_data, company_logo_url=company_logo_url
+    )
     s3_key = f"{project_id}.pdf"
 
     s3 = boto3.client(

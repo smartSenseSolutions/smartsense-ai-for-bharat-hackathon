@@ -10,11 +10,14 @@ Flow:
      and create a Quote record in the database.
 """
 
+import base64
 import hmac
 import hashlib
 import json
 import re
 from typing import Optional
+
+import boto3
 
 from nylas import Client  # nylas>=6.0.0 (Nylas API v3)
 
@@ -25,6 +28,7 @@ from app.services.rfp import get_bedrock_client
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
+
 
 def get_nylas_client() -> Client:
     if not settings.NYLAS_API_KEY:
@@ -42,8 +46,37 @@ def _require_grant_id() -> str:
 
 
 # ---------------------------------------------------------------------------
+# S3 helpers
+# ---------------------------------------------------------------------------
+
+
+def download_rfp_pdf_from_s3(project_id: str) -> bytes:
+    """
+    Download the published RFP PDF from S3.
+    File key: {project_id}.pdf in the S3_RFP_BUCKET bucket.
+    Returns raw PDF bytes.
+    """
+    bucket = settings.S3_RFP_BUCKET
+    if not bucket:
+        raise RuntimeError("S3_RFP_BUCKET is not configured")
+
+    region = settings.S3_RFP_BUCKET_REGION or settings.AWS_REGION
+    s3 = boto3.client(
+        "s3",
+        region_name=region,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
+
+    s3_key = f"{project_id}.pdf"
+    response = s3.get_object(Bucket=bucket, Key=s3_key)
+    return response["Body"].read()
+
+
+# ---------------------------------------------------------------------------
 # Email template
 # ---------------------------------------------------------------------------
+
 
 def _build_rfp_email_html(
     vendor_name: str,
@@ -164,6 +197,7 @@ def _build_rfp_email_html(
 # Send
 # ---------------------------------------------------------------------------
 
+
 def send_rfp_email(
     vendor_email: str,
     vendor_name: str,
@@ -171,12 +205,16 @@ def send_rfp_email(
     project_name: str,
     rfp_data: dict,
     cc: Optional[list[str]] = None,
+    attachment_bytes: Optional[bytes] = None,
+    attachment_name: Optional[str] = None,
 ) -> dict:
     """
     Send an RFP email to a single vendor and return the Nylas message object.
 
     Subject format: "RFP-{project_id}: {project_name} - Request for Proposal"
     This format is parsed by the webhook handler to match incoming replies.
+
+    If attachment_bytes is provided, the PDF is attached to the email.
     """
     nylas = get_nylas_client()
     grant_id = _require_grant_id()
@@ -192,6 +230,15 @@ def send_rfp_email(
     if cc:
         request_body["cc"] = [{"email": addr} for addr in cc]
 
+    if attachment_bytes and attachment_name:
+        request_body["attachments"] = [
+            {
+                "content": base64.b64encode(attachment_bytes).decode("utf-8"),
+                "content_type": "application/pdf",
+                "filename": attachment_name,
+            }
+        ]
+
     response = nylas.messages.send(identifier=grant_id, request_body=request_body)
     return response.data
 
@@ -201,11 +248,14 @@ def send_bulk_rfp_emails(
     project_name: str,
     rfp_data: dict,
     vendors: list[dict],
+    attachment_bytes: Optional[bytes] = None,
+    attachment_name: Optional[str] = None,
 ) -> list[dict]:
     """
     Send RFP emails to multiple vendors.
 
     Each vendor dict must have: id, name, contact_email.
+    If attachment_bytes is provided, the PDF is attached to every email.
     Returns a list of result dicts with success/failure per vendor.
     """
     results = []
@@ -232,6 +282,8 @@ def send_bulk_rfp_emails(
                 project_id=project_id,
                 project_name=project_name,
                 rfp_data=rfp_data,
+                attachment_bytes=attachment_bytes,
+                attachment_name=attachment_name,
             )
             results.append(
                 {
@@ -257,6 +309,7 @@ def send_bulk_rfp_emails(
 # ---------------------------------------------------------------------------
 # Read
 # ---------------------------------------------------------------------------
+
 
 def list_thread_messages(thread_id: str) -> list[dict]:
     """Return all messages in an email thread (as plain dicts)."""
@@ -287,6 +340,7 @@ def list_thread_messages(thread_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Webhook verification
 # ---------------------------------------------------------------------------
+
 
 def verify_webhook_signature(raw_body: bytes, nylas_signature: str) -> bool:
     """
@@ -365,4 +419,9 @@ Return only the JSON object, no markdown formatting.
         return json.loads(text)
     except Exception as exc:
         print(f"[email service] Bedrock quotation parsing failed: {exc}")
-        return {"price": None, "currency": "INR", "delivery_timeline": None, "notes": None}
+        return {
+            "price": None,
+            "currency": "INR",
+            "delivery_timeline": None,
+            "notes": None,
+        }

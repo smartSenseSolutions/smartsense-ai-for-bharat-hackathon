@@ -1,6 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.core.database import get_db
+from fastapi import APIRouter, HTTPException
 from app.schemas.rfp import (
     RFPGenerateRequest,
     RFPGenerateResponse,
@@ -11,6 +9,7 @@ from app.schemas.rfp import (
     RFPPublishResponse,
 )
 from app.services.rfp import generate_rfp_draft, chat_rfp_assistant, publish_rfp_to_s3
+from app.services.email import download_rfp_pdf_from_s3, send_bulk_rfp_emails
 
 router = APIRouter(prefix="/api/rfp", tags=["RFP Management"])
 
@@ -67,18 +66,56 @@ def publish_rfp(request: RFPPublishRequest):
 
 
 @router.post("/distribute")
-async def distribute_rfp(request: RFPDistributeRequest, db: Session = Depends(get_db)):
+async def distribute_rfp(request: RFPDistributeRequest):
     """
-    Distribute the finalized RFP to selected vendors.
-    Saves to DB and simulates sending emails/notifications.
+    Distribute the finalized RFP to selected vendors via email.
+    Downloads the RFP PDF from S3 and sends it as an attachment
+    to each vendor using Nylas.
+    If the PDF doesn't exist in S3 yet, generates and uploads it first.
     """
-    # Logic to record RFP distribution to the DB based on models
-    # for vid in request.vendor_ids:
-    #     new_rfp = RFP(project_id=request.project_id, vendor_id=vid, status="sent")
-    #     db.add(new_rfp)
-    # db.commit()
+    # 1. Try to download the RFP PDF from S3
+    pdf_bytes = None
+    try:
+        pdf_bytes = download_rfp_pdf_from_s3(request.project_id)
+    except Exception:
+        # PDF not in S3 yet — generate and upload it if we have rfp_data
+        if request.rfp_data:
+            try:
+                publish_rfp_to_s3(
+                    project_id=request.project_id,
+                    project_name=request.project_name,
+                    rfp_data=request.rfp_data,
+                )
+                pdf_bytes = download_rfp_pdf_from_s3(request.project_id)
+            except Exception as gen_err:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate RFP PDF: {gen_err}",
+                )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="RFP PDF not found in S3 and no rfp_data provided to generate it.",
+            )
+
+    # 2. Send emails to all vendors with the PDF attached
+    attachment_name = f"RFP-{request.project_id}.pdf"
+    vendors_dicts = [v.model_dump() for v in request.vendors]
+
+    results = send_bulk_rfp_emails(
+        project_id=request.project_id,
+        project_name=request.project_name,
+        rfp_data=request.rfp_data or {},
+        vendors=vendors_dicts,
+        attachment_bytes=pdf_bytes,
+        attachment_name=attachment_name,
+    )
+
+    sent_count = sum(1 for r in results if r["success"])
+    failed_count = len(results) - sent_count
 
     return {
-        "status": "success",
-        "message": f"RFP distributed to {len(request.vendor_ids)} vendors",
+        "status": "success" if failed_count == 0 else "partial",
+        "message": f"Emails sent to {sent_count}/{len(results)} vendor(s)",
+        "results": results,
     }
