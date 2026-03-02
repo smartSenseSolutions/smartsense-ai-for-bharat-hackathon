@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Vendors below this threshold are excluded before RRF to prevent false positives.
     # 1.3 = cosine > 0.3 (30% semantic similarity required).  Raise to 1.4–1.5 to
     # tighten results; lower toward 1.1 if too many relevant vendors are filtered out.
-    VENDOR_SEARCH_VECTOR_MIN_SCORE: float = 1.3
+    VENDOR_SEARCH_VECTOR_MIN_SCORE: float = 1.1
     VENDOR_SEARCH_CANDIDATE_MULTIPLIER: int = (
         10  # fetch top_n * multiplier candidates per phase
     )
@@ -53,8 +53,12 @@ class Settings(BaseSettings):
     # Nylas Email Integration
     NYLAS_API_KEY: Optional[str] = None
     NYLAS_GRANT_ID: Optional[str] = None
+    NYLAS_INBOUND_GRANT_ID: Optional[str] = (
+        None  # grant for the Nylas inbound email (receives vendor replies)
+    )
     NYLAS_API_URI: str = "https://api.us.nylas.com"
     NYLAS_WEBHOOK_SECRET: Optional[str] = None
+    NYLAS_SENDER_EMAIL: str = "noreply@procureai.nylas.email"
 
     class Config:
         env_file = ".env"

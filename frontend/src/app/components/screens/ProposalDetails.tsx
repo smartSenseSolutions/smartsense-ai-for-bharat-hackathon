@@ -1,4 +1,4 @@
-import { ArrowLeft, Users, MessageSquare, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search } from 'lucide-react';
 import { useState, Fragment, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -6,7 +6,6 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Card, CardContent } from '@/app/components/ui/card';
-import { QueriesPhaseGmail } from '@/app/components/screens/QueriesPhaseGmail';
 import { QuotationsPhaseGmail } from '@/app/components/screens/QuotationsPhaseGmail';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
 
@@ -50,14 +49,10 @@ interface ProposalDetailsProps {
 }
 
 export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }: ProposalDetailsProps) {
-  const [currentPhase, setCurrentPhase] = useState<'invite' | 'queries' | 'quotations' | 'ai-recommendation' | 'negotiations' | 'closure'>('invite');
-
-  // Track unread messages for Queries phase
-  const [unreadQueriesCount, setUnreadQueriesCount] = useState(2);
+  const [currentPhase, setCurrentPhase] = useState<'invite' | 'quotations' | 'ai-recommendation' | 'negotiations' | 'closure'>('invite');
 
   const phases = [
     { id: 'invite', label: 'Invite', icon: Users },
-    { id: 'queries', label: 'Queries', icon: MessageSquare },
     { id: 'quotations', label: 'Quotations', icon: FileText },
     { id: 'ai-recommendation', label: 'AI Recommendation', icon: Sparkles },
     { id: 'negotiations', label: 'Negotiations', icon: Phone },
@@ -104,13 +99,6 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
                       : 'bg-white border border-gray-200 text-gray-400'
                     }`}>
                     <Icon className="w-3.5 h-3.5" />
-
-                    {/* Red notification badge for Queries phase with unread messages */}
-                    {phase.id === 'queries' && unreadQueriesCount > 0 && (
-                      <div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center border-2 border-white">
-                        <span className="text-[9px] font-semibold text-white">{unreadQueriesCount}</span>
-                      </div>
-                    )}
                   </div>
                   <span className={`text-xs whitespace-nowrap ${isActive
                     ? 'text-gray-900 font-medium'
@@ -138,8 +126,7 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
       {/* Content */}
       <div className="overflow-y-auto max-h-[calc(100vh-250px)] hide-scrollbar">
         <div className="bg-white rounded-xl p-5">
-          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} />}
-          {currentPhase === 'queries' && <QueriesPhaseGmail proposal={proposal} />}
+          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} onInvitesSent={() => setCurrentPhase('quotations')} />}
           {currentPhase === 'quotations' && <QuotationsPhaseGmail proposal={proposal} />}
           {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} />}
           {currentPhase === 'negotiations' && <NegotiationsPhase proposal={proposal} />}
@@ -160,7 +147,7 @@ interface InvitedVendorRecord {
   invited_at: string;
 }
 
-function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChange?: (status: string) => void }) {
+function InvitePhase({ proposal, onStatusChange, onInvitesSent }: { proposal: any, onStatusChange?: (status: string) => void, onInvitesSent?: () => void }) {
   const [activeTab, setActiveTab] = useState<'search' | 'invited'>('search');
   const [invitedVendorsList, setInvitedVendorsList] = useState<InvitedVendorRecord[]>([]);
   const [isLoadingInvited, setIsLoadingInvited] = useState(false);
@@ -205,10 +192,56 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
 
   useEffect(() => {
     fetchInvitedVendors();
-    if (proposal && proposal.status === 'published' && proposal.title) {
-      fireSearch(proposal.title);
+    if (proposal && proposal.status === 'published') {
+      if (proposal.rfpData) {
+        fireRFPSearch(proposal.rfpData);
+      } else if (proposal.title) {
+        fireSearch(proposal.title);
+      }
     }
   }, [proposal?.id]);
+
+  const fireRFPSearch = (rfpData: any) => {
+    if (!rfpData) return;
+
+    console.log('[RFP Search] rfpData being sent:', JSON.stringify(rfpData).slice(0, 500));
+
+    setSubmittedQuery("Optimising search based on RFP...");
+    setSearchQuery("");
+    setInternalResults([]);
+    setExternalResults([]);
+    setIsInternalLoading(true);
+    setIsExternalLoading(true);
+
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    fetch(`${API_BASE}/api/search/vendors/smart/rfp`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ rfp_data: rfpData }),
+    })
+      .then(res => res.ok ? res.json() : { results: [], query: "RFP-driven search" })
+      .then(data => {
+        setSubmittedQuery(data.query || "RFP-driven search");
+        setSearchQuery(data.query || "");
+
+        // Backend returns combined results
+        const all = data.results ?? [];
+        setInternalResults(all.filter((r: any) => r.source === 'internal'));
+        setExternalResults(all.filter((r: any) => r.source === 'external'));
+        setIsInternalLoading(false);
+        setIsExternalLoading(false);
+      })
+      .catch(err => {
+        console.error('RFP search failed:', err);
+        setIsInternalLoading(false);
+        setIsExternalLoading(false);
+      });
+  };
 
   const fireSearch = (query: string) => {
     const trimmed = query.trim();
@@ -352,6 +385,7 @@ function InvitePhase({ proposal, onStatusChange }: { proposal: any, onStatusChan
         onStatusChange?.('in-progress');
       }
       setSelectedVendors([]);
+      onInvitesSent?.();
     } catch (err: any) {
       console.error('Send invites failed:', err);
       toast.error('Failed to send invites: ' + (err.message || 'Unknown error'));

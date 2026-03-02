@@ -112,6 +112,83 @@ Extract the following fields:
         return QueryIntent(keywords=words[:8], search_text=query[:200])
 
 
+async def decompose_rfp_to_intent(rfp_data: dict) -> QueryIntent:
+    """
+    Use Amazon Nova to extract structured search intent from the full RFP content.
+    Extracts key products, required certifications, and an optimized search phrase.
+    """
+    from langchain_aws import ChatBedrockConverse
+    import json
+
+    print(
+        f"[search-rfp] incoming rfp_data keys: {list(rfp_data.keys()) if isinstance(rfp_data, dict) else type(rfp_data)}"
+    )
+
+    try:
+        model_id = settings.BEDROCK_NOVA_MODEL_ID or "us.amazon.nova-2-lite-v1:0"
+        llm = ChatBedrockConverse(
+            model=model_id,
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            temperature=0,
+        )
+        structured_llm = llm.with_structured_output(schema=QueryIntent)
+
+        rfp_summary = json.dumps(rfp_data, indent=2)
+        prompt = f"""You are a procurement search expert. Read this RFP document carefully and extract
+the EXACT products, services, and technical requirements being procured.
+
+IMPORTANT RULES:
+- Extract the SPECIFIC product/service names from the RFP fields like "productName", "specifications", "projectName".
+- Do NOT use generic phrases like "industrial vendors" or "procurement services".
+- The search_text MUST contain domain-specific technical terms found IN the RFP (e.g. "DevOps CI/CD Kubernetes" not "Industrial procurement").
+- If the RFP is about software/IT services, the search_text must reflect that (e.g. "DevOps consulting CI/CD pipeline automation").
+- If the RFP is about physical products, the search_text must reflect that (e.g. "304 stainless steel seamless pipes ASTM A312").
+
+RFP Data:
+{rfp_summary}
+
+Fill in the QueryIntent:
+- products: The specific products or services being procured (use exact terms from RFP).
+- location: City or region if specified in RFP, otherwise null.
+- certifications: Required certifications/standards mentioned (ISO, BIS, CMMI, AWS, etc.).
+- vendor_type: "manufacturer", "service_provider", "distributor" etc. based on RFP context.
+- keywords: 4-8 highly specific technical keywords from the RFP content.
+- search_text: A precise 8-12 word search phrase using ONLY terms from the RFP. NO generic words.
+"""
+        result = structured_llm.invoke(prompt)
+        print(
+            f"[search-rfp] extracted intent: products={result.products} loc={result.location} "
+            f"certs={result.certifications} type={result.vendor_type} text='{result.search_text}'"
+        )
+        return result
+    except Exception as e:
+        print(f"[search-rfp] Nova decomposition failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+        # Fallback: extract whatever we can directly from the rfp_data fields
+        title = (
+            rfp_data.get("productName")
+            or rfp_data.get("projectName")
+            or rfp_data.get("documentTitle")
+            or "vendor"
+        )
+        specs = rfp_data.get("specifications", [])
+        specs_str = ", ".join(specs) if isinstance(specs, list) else str(specs)
+        search_text = f"{title} {specs_str}".strip() if specs_str else title
+        certs = rfp_data.get("qualityStandards", [])
+        if not isinstance(certs, list):
+            certs = [str(certs)] if certs else []
+        return QueryIntent(
+            products=[title],
+            certifications=certs,
+            keywords=title.split()[:6],
+            search_text=search_text[:120],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Hybrid vendor search: field-targeted BM25 + vector (kNN) with RRF fusion
 # ---------------------------------------------------------------------------
@@ -129,9 +206,7 @@ def _build_keyword_query(intent: QueryIntent) -> dict:
 
     # Products — primary procurement signal
     for product in intent.products:
-        should_clauses.append(
-            {"match": {"products": {"query": product, "boost": 5.0}}}
-        )
+        should_clauses.append({"match": {"products": {"query": product, "boost": 5.0}}})
         # Product names may also surface in certificate summaries
         should_clauses.append(
             {
@@ -194,7 +269,7 @@ def _build_keyword_query(intent: QueryIntent) -> dict:
                     "query": intent.search_text,
                     "fields": [
                         "vendor_name^3",
-                        "products^2",
+                        "products^4",
                         "certificates^2",
                         "location^2",
                         "certificate_details.document_summary^1.5",
@@ -249,31 +324,24 @@ def _rrf_fuse(
     return scored
 
 
-async def search_vendors_hybrid(query: str) -> list[dict]:
+async def search_vendors_hybrid(
+    query: Optional[str] = None, intent: Optional[QueryIntent] = None
+) -> list[dict]:
     """
     Three-phase hybrid search over the vendors OpenSearch index.
 
     Phase 0 — Query Decomposition:
-        A fast Gemini call converts the natural language query into structured
-        intent (products, location, certifications, keywords, search_text).
+        If `intent` is not provided, a fast Gemini call converts the natural
+        language `query` into structured intent.
 
     Phase 1 — Vector (kNN):
-        Embed `intent.search_text` (clean, focused) instead of the raw query
-        and retrieve the top `top_n * candidate_multiplier` nearest neighbours
-        by cosine similarity.
+        Embed `intent.search_text` and retrieve top candidates.
 
     Phase 2 — Keyword (BM25):
-        Run field-targeted bool/should clauses using the extracted intent:
-        products → products field, location → location field, certifications
-        → certificates/certificate_details fields.  A fallback multi_match on
-        search_text covers anything not explicitly categorised.
+        Run field-targeted queries using the extracted intent.
 
     Score fusion — RRF:
-        Results are merged with Reciprocal Rank Fusion.  No normalisation or
-        weight tuning required; rank position determines contribution.
-
-    Each retrieval phase is wrapped independently so a failure in one still
-    returns results from the other.
+        Results are merged with Reciprocal Rank Fusion.
     """
     import traceback
 
@@ -281,8 +349,11 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
     candidates = top_n * settings.VENDOR_SEARCH_CANDIDATE_MULTIPLIER
     rrf_k = settings.VENDOR_SEARCH_RRF_K
 
-    # ── Phase 0: decompose query into structured intent ──────────────────────
-    intent = await decompose_query(query)
+    # ── Phase 0: structured intent ──────────────────────────────────────────
+    if not intent:
+        if not query:
+            return []
+        intent = await decompose_query(query)
 
     client = _get_opensearch_client()
 
@@ -294,7 +365,7 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
     # min_score filters out vendors whose cosine similarity is below the threshold
     # before they ever reach RRF, preventing irrelevant results from being ranked.
     vec_min_score = settings.VENDOR_SEARCH_VECTOR_MIN_SCORE
-    embed_text = intent.search_text or query
+    embed_text = intent.search_text or query or ""
     try:
         query_embedding = generate_embedding(embed_text)
         vector_response = client.search(
@@ -349,25 +420,38 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
         return []
 
     # ── RRF score fusion ─────────────────────────────────────────────────────
-    # RRF determines rank order. Only vendors that passed the vector min_score
-    # threshold (i.e. have a genuine semantic match) are considered.
-    # Keyword-only hits are excluded — without a vector score we cannot verify
-    # absolute relevance, so they would pollute results with false positives.
+    # RRF determines rank order. We include all vendors that appeared in
+    # either retrieval phase (vector or keyword).
     fused = _rrf_fuse(vector_hits, keyword_hits, k=rrf_k)
 
     results = []
     for vid, rrf_score in fused[:top_n]:
-        if vid not in vector_hits:
-            # No confirmed semantic similarity — skip to avoid irrelevant results.
+        # vendor_data must exist in at least one of the hit lists
+        hit_data = vector_hits.get(vid) or keyword_hits.get(vid)
+        if not hit_data:
             continue
-        vendor_data = vector_hits[vid]["source"]
-        raw_vec = vector_hits[vid]["score"]
+
+        vendor_data = hit_data["source"]
+        raw_vec = vector_hits.get(vid, {}).get("score", 0.0)
         raw_kw = keyword_hits.get(vid, {}).get("score", 0.0)
 
         # final_score = cosine similarity, derived from the OpenSearch cosinesimil
         # score formula: opensearch_score = 1 + cosine → cosine = score - 1.
-        # Maps to [0, 1] where 1.0 = perfect semantic match, 0.0 = orthogonal.
-        cosine_sim = max(0.0, min(1.0, raw_vec - 1.0))
+        if vid in vector_hits:
+            cosine_sim = max(0.0, min(1.0, raw_vec - 1.0))
+        else:
+            # Heuristic for keyword-only matches to avoid 0% in UI.
+            # BM25 scores typically range 5-30. We map them into [0.70, 0.95]
+            # to better reflect semantic relevance even if vector hits are missing.
+            # 25+ -> 0.95, 15 -> 0.85, 5 -> 0.70
+            if raw_kw >= 25:
+                cosine_sim = 0.95
+            elif raw_kw <= 5:
+                cosine_sim = 0.70
+            else:
+                # Linear interpolation between 5 and 25
+                cosine_sim = 0.70 + (raw_kw - 5) * (0.25 / 20)
+            cosine_sim = round(cosine_sim, 4)
 
         csv_certs: list[str] = vendor_data.get("certificates") or []
         doc_certs: list[str] = [
@@ -410,6 +494,21 @@ async def search_vendors_hybrid(query: str) -> list[dict]:
         )
 
     return results
+
+
+async def search_vendors_by_rfp_intent(rfp_data: dict) -> QueryIntent:
+    """Extract intent from RFP using Nova."""
+    return await decompose_rfp_to_intent(rfp_data)
+
+
+async def search_vendors_by_rfp(rfp_data: dict) -> list[dict]:
+    """
+    Orchestrate vendor search driven by complete RFP content.
+    1. Extract intent using Nova.
+    2. Perform hybrid search.
+    """
+    intent = await search_vendors_by_rfp_intent(rfp_data)
+    return await search_vendors_hybrid(intent=intent)
 
 
 async def search_external_vendors(query: str, num_results: int = 10):

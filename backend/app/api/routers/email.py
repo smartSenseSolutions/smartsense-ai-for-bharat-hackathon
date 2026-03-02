@@ -18,7 +18,10 @@ Webhook flow:
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -32,6 +35,7 @@ from app.schemas.email import (
     ThreadMessagesResponse,
 )
 from app.services.email import (
+    download_attachment_content,
     extract_project_id_from_subject,
     list_thread_messages,
     parse_quotation_with_bedrock,
@@ -125,6 +129,28 @@ async def get_thread_messages(thread_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to fetch thread: {exc}")
 
     return ThreadMessagesResponse(thread_id=thread_id, messages=messages)
+
+
+# ---------------------------------------------------------------------------
+# Attachment download
+# ---------------------------------------------------------------------------
+
+
+@router.get("/attachments/{attachment_id}")
+async def download_attachment(attachment_id: str, message_id: str = Query(...)):
+    """Download an email attachment from Nylas by its attachment ID."""
+    try:
+        content, content_type, filename = download_attachment_content(attachment_id, message_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to download attachment: {exc}")
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +254,8 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
             "sender_email": sender_email,
             "sender_name": sender_name,
             "email_subject": subject,
+            "thread_id": msg_obj.get("thread_id"),
+            "message_id": msg_obj.get("id"),
         },
         created_at=datetime.utcnow(),
     )

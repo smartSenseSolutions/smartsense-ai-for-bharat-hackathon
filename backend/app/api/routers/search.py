@@ -10,6 +10,7 @@ from app.schemas.search import (
     SearchRequest,
     SearchResponse,
     VendorSmartSearchRequest,
+    VendorRFPSearchRequest,
     VendorSmartSearchResponse,
     VendorSearchResult,
     SearchHistoryResponse,
@@ -21,9 +22,56 @@ from app.services.search import (
     search_external_vendors,
     search_vendors_hybrid,
     search_gemini_vendors,
+    search_vendors_by_rfp_intent,
 )
 
 router = APIRouter(prefix="/api/search", tags=["Search"])
+
+
+@router.post("/vendors/smart/rfp", response_model=VendorSmartSearchResponse)
+async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
+    """
+    RFP-driven vendor search: extract intent from RFP (Nova) then search internal + external.
+    """
+    if not request.rfp_data:
+        raise HTTPException(status_code=400, detail="RFP data must not be empty")
+
+    try:
+        # 1. Extract intent using Nova
+        print(f"[search-rfp] Received rfp_data keys: {list(request.rfp_data.keys())}")
+        intent = await search_vendors_by_rfp_intent(request.rfp_data)
+        print(f"[search-rfp] Extracted intent text: {intent.search_text}")
+
+        # 2. Run internal hybrid search and External Gemini search concurrently
+        internal_raw, external_raw = await asyncio.gather(
+            search_vendors_hybrid(intent=intent),
+            search_gemini_vendors(
+                intent.search_text, num_results=settings.VENDOR_SEARCH_EXTERNAL_N
+            ),
+            return_exceptions=True,
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=503, detail=f"RFP search failed: {e}")
+
+    # Treat exceptions from either phase as empty results
+    if isinstance(internal_raw, Exception):
+        print(f"[search-rfp] internal phase raised: {internal_raw}")
+        internal_raw = []
+    if isinstance(external_raw, Exception):
+        print(f"[search-rfp] external phase raised: {external_raw}")
+        external_raw = []
+
+    all_results = [VendorSearchResult(**r) for r in internal_raw + external_raw]
+
+    return VendorSmartSearchResponse(
+        results=all_results,
+        total=len(all_results),
+        internal_count=len(internal_raw),
+        external_count=len(external_raw),
+        query=intent.search_text,
+        top_n=settings.VENDOR_SEARCH_TOP_N,
+    )
 
 
 @router.post("/vendors", response_model=SearchResponse)

@@ -51,6 +51,10 @@ class VendorSmartSearchRequest(BaseModel):
     query: str
 
 
+class VendorRFPSearchRequest(BaseModel):
+    rfp_data: dict
+
+
 class VendorSmartSearchResponse(BaseModel):
     results: List[VendorSearchResult]
     total: int
