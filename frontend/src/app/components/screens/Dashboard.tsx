@@ -7,11 +7,12 @@ import type { Screen } from '@/app/App';
 import { useState } from 'react';
 
 interface DashboardProps {
+  userName?: string;
   onNavigate: (screen: Screen) => void;
   onSearchClick: () => void;
 }
 
-export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
+export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
 
@@ -76,7 +77,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
   // Determine what to show based on search query
   const getSearchResultType = () => {
     const query = searchQuery.toLowerCase();
-    
+
     if (query.includes('vendor') && (query.includes('quotation') || query.includes('submitted'))) {
       return 'vendors';
     }
@@ -86,7 +87,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
     if (query.includes('active') && query.includes('rfp')) {
       return 'active-rfps';
     }
-    
+
     // Default search across all
     return 'general';
   };
@@ -98,10 +99,10 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white pt-8 pb-6 -mx-8 px-8 mb-4">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome, Ram!</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome, {userName || 'User'}!</h1>
           <p className="text-sm text-gray-500">Your AI-powered procurement platform dashboard</p>
         </div>
-        
+
         {/* AI Search Bar */}
         <div className="bg-white border border-[#eeeff1] rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
@@ -113,7 +114,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
           </div>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input 
+            <Input
               placeholder='Ask anything, like "How many vendors submitted quotations today?"'
               className="pl-12 pr-4 h-14 border-[#eeeff1] text-sm focus:border-[#3B82F6] transition-colors"
               value={searchQuery}
@@ -153,7 +154,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
           {searchResultType === 'vendors' && (
             <div className="grid grid-cols-3 gap-4">
               {vendorData.map((vendor) => (
-                <div 
+                <div
                   key={vendor.id}
                   className="bg-white border border-[#eeeff1] rounded-xl p-5 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => onNavigate('vendor-market')}
@@ -188,7 +189,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
           {searchResultType === 'pending-rfps' && (
             <div className="grid grid-cols-2 gap-4">
               {rfpData.filter(rfp => rfp.status === 'Pending').map((rfp) => (
-                <div 
+                <div
                   key={rfp.id}
                   className="bg-white border border-[#eeeff1] rounded-xl p-5 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => onNavigate('rfp-manager')}
@@ -215,7 +216,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
           {searchResultType === 'active-rfps' && (
             <div className="grid grid-cols-2 gap-4">
               {rfpData.filter(rfp => rfp.status === 'Active').map((rfp) => (
-                <div 
+                <div
                   key={rfp.id}
                   className="bg-white border border-[#eeeff1] rounded-xl p-5 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => onNavigate('rfp-manager')}
@@ -245,7 +246,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Vendors</h3>
                 <div className="grid grid-cols-3 gap-4">
                   {vendorData.slice(0, 3).map((vendor) => (
-                    <div 
+                    <div
                       key={vendor.id}
                       className="bg-white border border-[#eeeff1] rounded-xl p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                       onClick={() => onNavigate('vendor-market')}
@@ -261,7 +262,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">RFPs</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {rfpData.slice(0, 2).map((rfp) => (
-                    <div 
+                    <div
                       key={rfp.id}
                       className="bg-white border border-[#eeeff1] rounded-xl p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                       onClick={() => onNavigate('rfp-manager')}
@@ -289,7 +290,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
           <div className="grid grid-cols-4 gap-4 mb-8">
             {metrics.map((metric, index) => {
               const Icon = metric.icon;
-              
+
               return (
                 <div key={index} className="bg-white border border-[#eeeff1] rounded-xl p-6">
                   <div className="flex items-start justify-between mb-5">
@@ -320,10 +321,10 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
             </div>
             <div className="grid grid-cols-4 gap-4">
               {[
-                { 
-                  id: 1, 
-                  name: 'Global Tech', 
-                  location: 'Mumbai', 
+                {
+                  id: 1,
+                  name: 'Global Tech',
+                  location: 'Mumbai',
                   rating: 4.9,
                   totalOrders: 45,
                   onTimeDelivery: 98,
@@ -331,10 +332,10 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                   responseTime: '2.3 hrs',
                   category: 'Lab Equipment'
                 },
-                { 
-                  id: 2, 
-                  name: 'ABC Manufacturing', 
-                  location: 'Delhi', 
+                {
+                  id: 2,
+                  name: 'ABC Manufacturing',
+                  location: 'Delhi',
                   rating: 4.8,
                   totalOrders: 38,
                   onTimeDelivery: 95,
@@ -342,10 +343,10 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                   responseTime: '3.1 hrs',
                   category: 'Surgical Equipment'
                 },
-                { 
-                  id: 3, 
-                  name: 'MediTech Industries', 
-                  location: 'Hyderabad', 
+                {
+                  id: 3,
+                  name: 'MediTech Industries',
+                  location: 'Hyderabad',
                   rating: 4.7,
                   totalOrders: 32,
                   onTimeDelivery: 94,
@@ -353,10 +354,10 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                   responseTime: '2.8 hrs',
                   category: 'Diagnostic Tools'
                 },
-                { 
-                  id: 4, 
-                  name: 'BioMed Supplies', 
-                  location: 'Pune', 
+                {
+                  id: 4,
+                  name: 'BioMed Supplies',
+                  location: 'Pune',
                   rating: 4.8,
                   totalOrders: 29,
                   onTimeDelivery: 96,
@@ -365,7 +366,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                   category: 'Lab Equipment'
                 },
               ].map((vendor) => (
-                <div 
+                <div
                   key={vendor.id}
                   className="bg-white border border-[#eeeff1] rounded-xl p-5 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => onNavigate('vendor-market')}
@@ -379,7 +380,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                       {vendor.rating} ★
                     </Badge>
                   </div>
-                  
+
                   <div className="space-y-3 mb-4">
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
@@ -387,13 +388,13 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                         <span className="text-xs font-semibold text-gray-900">{vendor.onTimeDelivery}%</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div 
-                          className="bg-blue-500 h-1.5 rounded-full" 
+                        <div
+                          className="bg-blue-500 h-1.5 rounded-full"
                           style={{ width: `${vendor.onTimeDelivery}%` }}
                         />
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-1">Total Orders</p>
@@ -405,7 +406,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="pt-3 border-t border-[#eeeff1]">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Avg Response</span>
@@ -428,7 +429,7 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
               <div className="bg-white border border-[#eeeff1] rounded-xl overflow-hidden">
                 <div className="divide-y divide-[#eeeff1]">
                   {recentActivities.map((activity) => (
-                    <div 
+                    <div
                       key={activity.id}
                       className="p-5 hover:bg-gray-50 transition-colors cursor-pointer"
                       onClick={() => onNavigate(activity.screen)}
@@ -466,16 +467,15 @@ export function Dashboard({ onNavigate, onSearchClick }: DashboardProps) {
                           <p className="text-sm text-gray-900 font-medium mb-2">{item.title}</p>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="text-xs text-gray-500">Due: {item.deadline}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              item.priority === 'high' ? 'bg-red-50 text-red-700' : 
-                              item.priority === 'medium' ? 'bg-orange-50 text-orange-700' : 
-                              'bg-blue-50 text-blue-700'
-                            } font-medium`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${item.priority === 'high' ? 'bg-red-50 text-red-700' :
+                              item.priority === 'medium' ? 'bg-orange-50 text-orange-700' :
+                                'bg-blue-50 text-blue-700'
+                              } font-medium`}>
                               {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)} Priority
                             </span>
                           </div>
                         </div>
-                        <Button 
+                        <Button
                           className="border border-[#3B82F6] bg-white hover:bg-blue-50 text-[#3B82F6] h-8 px-4 font-medium text-xs transition-colors ml-4"
                           onClick={() => {
                             if (item.title.includes('Draft RFP')) {

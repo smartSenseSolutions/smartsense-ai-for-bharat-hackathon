@@ -8,16 +8,19 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   userEmail?: string;
+  fullName?: string;
   onLogout?: () => void;
 }
 
-export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse, userEmail, onLogout }: SidebarProps) {
+export function Sidebar({ currentScreen, onNavigate, collapsed, onToggleCollapse, userEmail, fullName, onLogout }: SidebarProps) {
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [showExpandButton, setShowExpandButton] = useState(false);
 
-  const initials = userEmail ? userEmail.slice(0, 2).toUpperCase() : 'RK';
-  const displayEmail = userEmail ?? 'ramkrish@smartsense.com';
-  const displayName = userEmail ? userEmail.split('@')[0] : 'Ram Krish';
+  const initials = fullName
+    ? fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : (userEmail ? userEmail.slice(0, 2).toUpperCase() : 'U');
+  const displayEmail = userEmail ?? 'user@example.com';
+  const displayName = fullName || (userEmail ? userEmail.split('@')[0] : 'User');
 
   const menuItems = [
     { id: 'dashboard' as Screen, label: 'Dashboard', icon: LayoutDashboard },
