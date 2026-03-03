@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.models.domain import Project, ProjectStatus, ProjectInvitedVendor
+from app.services.activity import log_activity
 from app.schemas.domain import (
     ProjectCreate,
     ProjectUpdate,
@@ -79,6 +80,17 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
+    
+    # Log activity
+    status_type = "rfp_draft" if db_project.status == ProjectStatus.DRAFT else "rfp_created"
+    log_activity(
+        db, 
+        type=status_type, 
+        title=f"New RFP Project created: {db_project.project_name}",
+        description=f"Project status: {db_project.status.value}",
+        project_id=db_project.id
+    )
+    
     return db_project
 
 
@@ -118,6 +130,7 @@ def update_project(
         if resolved:
             update_data["rfp_expiry"] = resolved
 
+    old_status = db_project.status
     for key, value in update_data.items():
         if key == "status":
             setattr(db_project, key, ProjectStatus(value))
@@ -126,6 +139,24 @@ def update_project(
 
     db.commit()
     db.refresh(db_project)
+    
+    # Log activity for status changes
+    if "status" in update_data and old_status != db_project.status:
+        if db_project.status == ProjectStatus.COMPLETED:
+            log_activity(
+                db, 
+                type="rfp_closed", 
+                title=f"RFP Project Closed: {db_project.project_name}",
+                project_id=db_project.id
+            )
+        elif db_project.status == ProjectStatus.PUBLISHED:
+             log_activity(
+                db, 
+                type="rfp_published", 
+                title=f"RFP Published: {db_project.project_name}",
+                project_id=db_project.id
+            )
+
     return db_project
 
 

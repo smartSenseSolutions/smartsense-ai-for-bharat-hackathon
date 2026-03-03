@@ -164,3 +164,19 @@ class SearchHistory(Base):
     internal_results = Column(JSON, nullable=True)
     external_results = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id = Column(String, primary_key=True, index=True)
+    type = Column(String, index=True)  # rfp_publish, quote_received, etc.
+    title = Column(String)
+    description = Column(Text, nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    vendor_id = Column(String, ForeignKey("vendors.id"), nullable=True)
+    is_new = Column(Boolean, default=True)  # For that "New" tag
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project")
+    vendor = relationship("Vendor")

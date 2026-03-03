@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.models.domain import Vendor, Project
+from app.models.domain import Vendor, Project, ProjectStatus
 
 router = APIRouter(prefix="/api/stats", tags=["Statistics"])
 
@@ -48,5 +48,63 @@ def get_marketplace_stats(db: Session = Depends(get_db)):
             "verified_vendors_count": 0,
             "product_categories_count": 0,
             "total_projects_count": 0,
+            "error": str(e)
+        }
+
+
+@router.get("/dashboard")
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    """
+    Retrieve real-time stats for the dashboard:
+    1. Active RFPs (not in closure/draft stage)
+    2. Total savings (fixed to 0 for now)
+    3. Active vendors (real count from DB)
+    4. Top 4 performing RFPs (recent active projects)
+    """
+    try:
+        # 1. Active RFPs (Status NOT IN (DRAFT, COMPLETED))
+        active_rfps_count = db.query(Project).filter(
+            Project.status.notin_([ProjectStatus.DRAFT, ProjectStatus.COMPLETED])
+        ).count()
+
+        # 2. Total Savings (Fixed to 0 for now)
+        total_savings = 0
+
+        # 3. Active Vendors
+        active_vendors_count = db.query(Vendor).count()
+
+        # 4. Top Performing RFPs (Top 4 recent projects, not draft/completed)
+        top_rfps = (
+            db.query(Project)
+            .filter(Project.status.notin_([ProjectStatus.DRAFT, ProjectStatus.COMPLETED]))
+            .order_by(Project.created_at.desc())
+            .limit(4)
+            .all()
+        )
+
+        top_rfps_data = []
+        for p in top_rfps:
+            top_rfps_data.append({
+                "id": p.id,
+                "project_name": p.project_name,
+                "status": p.status.value if hasattr(p.status, "value") else p.status,
+                "created_at": p.created_at.isoformat()
+            })
+
+        return {
+            "active_rfps_count": active_rfps_count,
+            "total_savings": total_savings,
+            "active_vendors_count": active_vendors_count,
+            "top_rfps": top_rfps_data
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[stats] Error fetching dashboard stats: {e}")
+        return {
+            "active_rfps_count": 0,
+            "total_savings": 0,
+            "active_vendors_count": 0,
+            "top_rfps": [],
             "error": str(e)
         }
