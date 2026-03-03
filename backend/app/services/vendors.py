@@ -79,7 +79,6 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
 # ---------------------------------------------------------------------------
 
 CSV_HEADERS = [
-    "vendor_id",
     "vendor_name",
     "location",
     "estd",
@@ -99,7 +98,6 @@ def get_csv_template() -> str:
     writer.writerow(CSV_HEADERS)
     writer.writerow(
         [
-            "",  # vendor_id
             "Acme Supplies Pvt Ltd",
             "Mumbai, Maharashtra",
             "2005",
@@ -145,9 +143,8 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
         try:
             with db.begin_nested():
                 name = (row.get("vendor_name") or "").strip()
-                vendor_id = (row.get("vendor_id") or "").strip()
-                if not name and not vendor_id:
-                    raise ValueError("vendor_name or vendor_id is required")
+                if not name:
+                    raise ValueError("vendor_name is required")
 
                 estd_raw = (row.get("estd") or "").strip()
                 estd = int(estd_raw) if estd_raw else None
@@ -185,9 +182,6 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
                         .filter(func.lower(Vendor.name) == name.lower())
                         .first()
                     )
-
-                if not existing and vendor_id:
-                    existing = db.query(Vendor).filter(Vendor.id == vendor_id).first()
 
                 if existing:
                     for key, value in fields.items():
