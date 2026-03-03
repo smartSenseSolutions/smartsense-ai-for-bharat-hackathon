@@ -7,7 +7,11 @@ from app.core.database import get_db
 from app.models.domain import ProjectInvitedVendor, Quote
 from app.schemas.domain import QuoteScoreRequest, NegotiationEmailRequest
 from app.services.email import search_rfp_threads_nylas
-from app.services.quotes import score_quotes, generate_negotiation_email
+from app.services.quotes import (
+    score_quotes,
+    generate_negotiation_email,
+    generate_ai_recommendations,
+)
 
 router = APIRouter(prefix="/api/quotes", tags=["Quotes & Negotiation"])
 
@@ -28,7 +32,9 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
         .filter(ProjectInvitedVendor.project_id == project_id)
         .all()
     )
-    name_by_email = {iv.contact_email: iv.vendor_name for iv in invited if iv.contact_email}
+    name_by_email = {
+        iv.contact_email: iv.vendor_name for iv in invited if iv.contact_email
+    }
     invited_emails = set(name_by_email.keys())
 
     result: list[dict] = []
@@ -44,7 +50,9 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
     for q in db_quotes:
         sla = q.sla_details or {}
         sender_email = sla.get("sender_email", "")
-        vendor_name = name_by_email.get(sender_email) or sla.get("sender_name") or sender_email
+        vendor_name = (
+            name_by_email.get(sender_email) or sla.get("sender_name") or sender_email
+        )
         thread_id = sla.get("thread_id")
         if thread_id:
             known_thread_ids.add(thread_id)
@@ -100,6 +108,22 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
         print(f"[quotes] Nylas thread search error: {exc}")
 
     return result
+
+
+@router.get("/by-project/{project_id}/recommendations")
+async def get_project_ai_recommendations(
+    project_id: str, db: Session = Depends(get_db)
+):
+    """
+    Generate and return AI recommendations for all vendors who submitted a quote for a given project.
+    """
+    try:
+        recommendations = await generate_ai_recommendations(project_id, db)
+        return recommendations
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/score")

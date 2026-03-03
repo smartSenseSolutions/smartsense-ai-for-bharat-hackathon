@@ -25,6 +25,7 @@ export interface Project {
   projectName: string;
   status: 'draft' | 'published' | 'in-progress' | 'completed';
   rfpData: any;
+  rfpExpiry?: string;
   createdAt: Date;
 }
 
@@ -187,6 +188,7 @@ export default function App() {
             projectName: p.project_name,
             status: p.status ? p.status.toLowerCase() : 'draft',
             rfpData: p.rfp_data,
+            rfpExpiry: p.rfp_expiry || null,
             createdAt: new Date(p.created_at)
           }));
           setProjects(mappedProjects);

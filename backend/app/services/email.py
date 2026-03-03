@@ -307,8 +307,65 @@ def send_bulk_rfp_emails(
     return results
 
 
+def send_reply_email(
+    project_id: str,
+    subject: str,
+    to_email: str,
+    to_name: str,
+    body: str,
+) -> dict:
+    """
+    Send a reply to an existing email thread.
+    Uses the sender grant ID (Gmail) explicitly since it's an outbound email.
+    We look up the original sent message in the sender grant to use its true ID
+    for reply_to_message_id, ensuring the reply threads perfectly in Gmail.
+    """
+    nylas = get_nylas_client()
+    grant_id = _require_grant_id()
+
+    # Find the original message sent to this vendor for this project
+    # so we can use its ID for threading explicitly on the Gmail grant.
+    original_msg_id = None
+    if project_id:
+        try:
+            query = f"subject:RFP-{project_id} to:{to_email}"
+            response = nylas.messages.list(
+                identifier=grant_id,
+                query_params={"search_query_native": query, "limit": 1},
+            )
+            if response.data:
+                original_msg_id = response.data[0].id
+        except Exception as exc:
+            print(f"[email] Failed to find original message for threading: {exc}")
+
+    # Create the subject. Ensure it has "Re: " prefix for standard threading
+    reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+
+    request_body: dict = {
+        "subject": reply_subject,
+        "body": body,
+        "to": [{"name": to_name, "email": to_email}],
+        "reply_to": [{"name": "Procure AI", "email": settings.NYLAS_SENDER_EMAIL}],
+    }
+
+    if original_msg_id:
+        request_body["reply_to_message_id"] = original_msg_id
+
+    try:
+        response = nylas.messages.send(identifier=grant_id, request_body=request_body)
+    except Exception as exc:
+        print(f"[email] Nylas send reply exception: {exc}")
+        if hasattr(exc, "status_code"):
+            print(f"[email] status_code: {exc.status_code}")
+        if hasattr(exc, "body"):
+            print(f"[email] body: {getattr(exc, 'body')}")
+        raise RuntimeError(f"Failed to send reply via Nylas API: {exc}")
+
+    return response.data
+
+
 # ---------------------------------------------------------------------------
-# Read
+# Thread Fetching
 # ---------------------------------------------------------------------------
 
 
@@ -344,7 +401,7 @@ def list_thread_messages(thread_id: str) -> list[dict]:
     try:
         response = nylas.messages.list(
             identifier=grant_id,
-            query_params={"thread_id": thread_id},
+            query_params={"thread_id": thread_id, "fields": "include_headers"},
         )
         raw_messages.extend(response.data)
     except Exception:
@@ -355,7 +412,7 @@ def list_thread_messages(thread_id: str) -> list[dict]:
         try:
             response = nylas.messages.list(
                 identifier=inbound_grant,
-                query_params={"thread_id": thread_id},
+                query_params={"thread_id": thread_id, "fields": "include_headers"},
             )
             raw_messages.extend(response.data)
         except Exception:
@@ -368,6 +425,13 @@ def list_thread_messages(thread_id: str) -> list[dict]:
         if msg.id in seen_ids:
             continue
         seen_ids.add(msg.id)
+
+        # Extract RFC-2822 Message-ID from headers
+        rfc_message_id = ""
+        for h in getattr(msg, "headers", None) or []:
+            if getattr(h, "name", "").lower() == "message-id":
+                rfc_message_id = getattr(h, "value", "")
+                break
 
         attachments = []
         for att in getattr(msg, "attachments", None) or []:
@@ -385,6 +449,7 @@ def list_thread_messages(thread_id: str) -> list[dict]:
         result.append(
             {
                 "id": msg.id,
+                "rfc_message_id": rfc_message_id,
                 "subject": msg.subject,
                 "from": _addr_list(getattr(msg, "from_", None)),
                 "to": _addr_list(getattr(msg, "to", None)),
@@ -416,22 +481,26 @@ def search_rfp_threads_nylas(
     try:
         response = nylas.messages.list(
             identifier=grant_id,
-            query_params={"q": f"subject:RFP-{project_id}", "limit": 50},
+            query_params={
+                "search_query_native": f"subject:RFP-{project_id}",
+                "limit": 50,
+            },
         )
         all_messages.extend(response.data)
     except Exception as exc:
         print(f"[email] Nylas sender grant thread search failed: {exc}")
 
     # 2. Search the inbound grant (Nylas virtual email — vendor replies)
-    #    The virtual mailbox may not support Gmail-style 'q' search, so we
-    #    use the 'subject' query param and also filter client-side.
     inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
     subject_tag = f"RFP-{project_id}"
     if inbound_grant and inbound_grant != grant_id:
         try:
             response = nylas.messages.list(
                 identifier=inbound_grant,
-                query_params={"subject": subject_tag, "limit": 50},
+                query_params={
+                    "search_query_native": f"subject:RFP-{project_id}",
+                    "limit": 50,
+                },
             )
             # Client-side filter: only keep messages whose subject contains
             # the exact RFP tag for this project (case-insensitive).

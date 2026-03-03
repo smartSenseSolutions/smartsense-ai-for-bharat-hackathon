@@ -45,3 +45,12 @@ class BulkSendResponse(BaseModel):
 class ThreadMessagesResponse(BaseModel):
     thread_id: str
     messages: list[dict]
+
+
+class ReplyEmailRequest(BaseModel):
+    thread_id: str
+    project_id: str
+    subject: str
+    to_email: str
+    to_name: str
+    body: str

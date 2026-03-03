@@ -31,12 +31,14 @@ class ProjectCreate(BaseModel):
     project_name: str
     status: str = "draft"
     rfp_data: Optional[Any] = None
+    rfp_expiry: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
     project_name: Optional[str] = None
     status: Optional[str] = None
     rfp_data: Optional[Any] = None
+    rfp_expiry: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -44,6 +46,7 @@ class ProjectResponse(BaseModel):
     project_name: str
     status: str
     rfp_data: Optional[Any]
+    rfp_expiry: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -72,3 +75,21 @@ class ProjectInvitedVendorResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class VendorRecommendationScore(BaseModel):
+    vendor_name: str
+    vendor_email: str
+    price_score: float
+    delivery_score: float
+    quality_score: float
+    warranty_score: float
+    compliance_score: float
+    overall_score: float
+    is_recommended: bool
+    recommendation_reason: str
+    citation: str
+
+
+class AIRecommendationsResponse(BaseModel):
+    recommendations: List[VendorRecommendationScore]

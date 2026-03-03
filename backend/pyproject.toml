@@ -26,6 +26,7 @@ dependencies = [
     "reportlab>=4.2.0",
     "google-genai>=1.65.0",
     "langchain-google-genai>=4.2.1",
+    "pypdf>=4.0.0",
 ]
 
 [tool.uv]

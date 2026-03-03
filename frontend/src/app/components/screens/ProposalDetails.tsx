@@ -1703,112 +1703,50 @@ function QuotationsPhase({ proposal }: { proposal: any }) {
 
 // AI Recommendation Phase Component
 function AIRecommendationPhase({ proposal }: { proposal: any }) {
-  const [hoveredVendor, setHoveredVendor] = useState<number | null>(null);
+  const [hoveredVendor, setHoveredVendor] = useState<string | null>(null);
   const [emailPanelVendor, setEmailPanelVendor] = useState<any>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const vendors = [
-    {
-      id: 1,
-      vendor: 'Global Electronics Supply',
-      email: 'info@globalsupply.com',
-      priceScore: 95,
-      deliveryScore: 85,
-      qualityScore: 92,
-      warrantyScore: 90,
-      complianceScore: 88,
-      overallScore: 95,
-      isRecommended: true,
-      recommendationReason: 'This vendor demonstrates exceptional performance across all key metrics with the highest price competitiveness (95/100) and outstanding quality standards (92/100). Their strong compliance certifications (88/100) and reliable delivery timeline (85/100) make them the most balanced and trustworthy choice for this procurement project.',
-    },
-    {
-      id: 2,
-      vendor: 'TechDistributor Inc.',
-      email: 'contact@techdist.com',
-      priceScore: 88,
-      deliveryScore: 92,
-      qualityScore: 85,
-      warrantyScore: 90,
-      complianceScore: 85,
-      overallScore: 88,
-      isRecommended: true,
-      recommendationReason: 'Excellent delivery performance (92/100) combined with strong quality standards (85/100) and comprehensive warranty terms (90/100). This vendor offers reliable service with competitive pricing (88/100) making them a solid choice for time-sensitive projects.',
-    },
-    {
-      id: 3,
-      vendor: 'Enterprise Solutions Co.',
-      email: 'sales@enterprise.com',
-      priceScore: 75,
-      deliveryScore: 95,
-      qualityScore: 78,
-      warrantyScore: 70,
-      complianceScore: 65,
-      overallScore: 75,
-      isRecommended: false,
-    },
-    {
-      id: 4,
-      vendor: 'MedSupply International',
-      email: 'orders@medsupply.com',
-      priceScore: 82,
-      deliveryScore: 78,
-      qualityScore: 88,
-      warrantyScore: 85,
-      complianceScore: 90,
-      overallScore: 84,
-      isRecommended: false,
-    },
-    {
-      id: 5,
-      vendor: 'Healthcare Distributors',
-      email: 'info@healthdist.com',
-      priceScore: 78,
-      deliveryScore: 88,
-      qualityScore: 72,
-      warrantyScore: 75,
-      complianceScore: 68,
-      overallScore: 76,
-      isRecommended: false,
-    },
-    {
-      id: 6,
-      vendor: 'BioMedical Supplies Ltd.',
-      email: 'procurement@biomedical.com',
-      priceScore: 85,
-      deliveryScore: 82,
-      qualityScore: 86,
-      warrantyScore: 88,
-      complianceScore: 85,
-      overallScore: 85,
-      isRecommended: true,
-      recommendationReason: 'Strong overall performance with excellent quality standards (86/100) and warranty coverage (88/100). Their compliance certifications (85/100) and balanced pricing (85/100) make them ideal for regulated healthcare procurement.',
-    },
-    {
-      id: 7,
-      vendor: 'Budget Medical Co.',
-      email: 'sales@budgetmedical.com',
-      priceScore: 92,
-      deliveryScore: 45,
-      qualityScore: 58,
-      warrantyScore: 48,
-      complianceScore: 52,
-      overallScore: 59,
-      isRecommended: false,
-    },
-  ];
+  const projectId = proposal?.id?.startsWith('RFP-')
+    ? proposal.id.replace('RFP-', '')
+    : proposal?.id;
+
+  useEffect(() => {
+    const fetchRecommendations = async () => {
+      if (!projectId) return;
+      setIsLoading(true);
+      try {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${API_BASE}/api/quotes/by-project/${projectId}/recommendations`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setRecommendations(data.recommendations || []);
+        } else {
+          toast.error("Failed to fetch AI recommendations");
+        }
+      } catch (error) {
+        console.error("Error fetching logic:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchRecommendations();
+  }, [projectId]);
 
   const handleSendEmail = (vendor: any) => {
     setEmailPanelVendor(vendor);
   };
 
-  const bestVendor = vendors.find(v => v.isRecommended);
-
   const metrics = [
-    { id: 'price', label: 'Price Competitiveness', field: 'priceScore' },
-    { id: 'delivery', label: 'Delivery Timeline', field: 'deliveryScore' },
-    { id: 'quality', label: 'Quality Standards', field: 'qualityScore' },
-    { id: 'warranty', label: 'Warranty Terms', field: 'warrantyScore' },
-    { id: 'compliance', label: 'Compliance & Certifications', field: 'complianceScore' },
-    { id: 'overall', label: 'Overall AI Score', field: 'overallScore' },
+    { id: 'price', label: 'Price Competitiveness', field: 'price_score' },
+    { id: 'delivery', label: 'Delivery Timeline', field: 'delivery_score' },
+    { id: 'quality', label: 'Quality Standards', field: 'quality_score' },
+    { id: 'warranty', label: 'Warranty Terms', field: 'warranty_score' },
+    { id: 'compliance', label: 'Compliance & Certifications', field: 'compliance_score' },
+    { id: 'overall', label: 'Overall AI Score', field: 'overall_score' },
   ];
 
   const getScoreColor = (score: number) => {
@@ -1822,7 +1760,7 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">AI Recommendation</h2>
-          <p className="text-sm text-gray-500">AI-powered analysis across {vendors.length} vendor quotations</p>
+          <p className="text-sm text-gray-500">AI-powered analysis using Amazon Nova models</p>
         </div>
       </div>
 
@@ -1841,66 +1779,93 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {vendors.flatMap((vendor) => [
-              <tr
-                key={vendor.id}
-                className={`${vendor.isRecommended ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'} transition-colors`}
-                onMouseEnter={() => vendor.isRecommended && setHoveredVendor(vendor.id)}
-                onMouseLeave={() => setHoveredVendor(null)}
-              >
-                <td className="px-4 py-3">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium text-gray-900">{vendor.vendor}</span>
-                      {vendor.isRecommended && (
-                        <Badge className="text-xs px-1.5 py-0 bg-green-600 text-white border-0">
-                          Recommended
-                        </Badge>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500">{vendor.email}</span>
+            {isLoading ? (
+              <tr>
+                <td colSpan={metrics.length + 2} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <Sparkles className="w-8 h-8 text-blue-500 animate-pulse" />
+                    AI is reviewing the quotations and negotiating requirements...
                   </div>
                 </td>
-                {metrics.map((metric) => {
-                  const score = vendor[metric.field as keyof typeof vendor] as number;
-                  return (
-                    <td key={metric.id} className="px-4 py-3 text-center">
-                      <span className={`text-sm font-medium ${getScoreColor(score)}`}>
-                        {score}
-                      </span>
-                    </td>
-                  );
-                })}
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      onClick={() => handleSendEmail(vendor)}
-                      className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-                      title="Send Email"
-                    >
-                      <Mail className="w-4 h-4 text-gray-600" />
-                    </button>
-                  </div>
+              </tr>
+            ) : recommendations.length === 0 ? (
+              <tr>
+                <td colSpan={metrics.length + 2} className="px-4 py-12 text-center text-sm text-gray-500">
+                  No recommendations generated yet.
                 </td>
-              </tr>,
-              ...(vendor.isRecommended && hoveredVendor === vendor.id ? [
-                <tr key={`${vendor.id}-reason`}>
-                  <td colSpan={metrics.length + 2} className="px-4 py-3 bg-white">
-                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                      <div className="flex items-start gap-3">
-                        <Sparkles className="w-4 h-4 text-[#3B82F6] flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-xs font-medium text-gray-900 mb-1">AI Recommended</p>
-                          <p className="text-xs text-gray-600 leading-relaxed">
-                            {vendor.recommendationReason}
-                          </p>
-                        </div>
+              </tr>
+            ) : recommendations.flatMap((vendor, idx) => {
+              const uniqueId = vendor.vendor_name + idx;
+              return [
+                <tr
+                  key={uniqueId}
+                  className={`${vendor.is_recommended ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'} transition-colors`}
+                  onMouseEnter={() => vendor.is_recommended && setHoveredVendor(uniqueId)}
+                  onMouseLeave={() => setHoveredVendor(null)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-sm font-medium text-gray-900">{vendor.vendor_name}</span>
+                        {vendor.is_recommended && (
+                          <Badge className="text-xs px-1.5 py-0 bg-green-600 text-white border-0">
+                            Recommended
+                          </Badge>
+                        )}
                       </div>
+                      <span className="text-xs text-gray-500">{vendor.vendor_email}</span>
                     </div>
                   </td>
-                </tr>
-              ] : [])
-            ])}
+                  {metrics.map((metric) => {
+                    const score = vendor[metric.field as keyof typeof vendor] as number || 0;
+                    return (
+                      <td key={metric.id} className="px-4 py-3 text-center relative group">
+                        <span className={`text-sm font-medium ${getScoreColor(score)} cursor-help border-b border-dashed border-gray-300`}>
+                          {score}
+                        </span>
+                        {/* Tooltip for metrics */}
+                        {vendor.citation && (
+                          <div className="absolute z-50 hidden group-hover:block w-72 p-3 bg-gray-900 text-white text-xs rounded shadow-lg bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none text-left">
+                            <p className="font-semibold mb-1 text-gray-200">AI Citation</p>
+                            <p className="text-gray-300 italic whitespace-pre-wrap break-words">"{vendor.citation}"</p>
+                            {/* Little triangle arrow at bottom */}
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 mt-0"></div>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleSendEmail(vendor)}
+                        className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+                        title="Send Email"
+                      >
+                        <Mail className="w-4 h-4 text-gray-600" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>,
+                ...(vendor.is_recommended && hoveredVendor === uniqueId ? [
+                  <tr key={`${uniqueId}-reason`}>
+                    <td colSpan={metrics.length + 2} className="px-4 py-3 bg-white">
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                          <Sparkles className="w-4 h-4 text-[#3B82F6] flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-gray-900 mb-1">AI Recommended</p>
+                            <p className="text-xs text-gray-600 leading-relaxed mb-2">
+                              {vendor.recommendation_reason}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ] : [])
+              ];
+            })}
           </tbody>
         </table>
       </div>

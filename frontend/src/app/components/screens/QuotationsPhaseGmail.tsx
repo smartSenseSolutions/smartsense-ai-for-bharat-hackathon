@@ -53,6 +53,8 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
   const [isLoading, setIsLoading] = useState(true);
   const [threadMessages, setThreadMessages] = useState<any[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const projectId = proposal?.id?.startsWith('RFP-')
     ? proposal.id.replace('RFP-', '')
@@ -80,6 +82,7 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
     setSelectedQuotation(quotation);
     setEmailThreadOpen(true);
     setThreadMessages([]);
+    setReplyText('');
 
     if (!quotation.thread_id) return;
 
@@ -97,6 +100,55 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
       // thread unavailable — fall back to quote record data shown in panel
     } finally {
       setIsThreadLoading(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !selectedQuotation?.thread_id || threadMessages.length === 0) return;
+
+    // Find the latest message from the vendor we are replying to, so we can
+    // extract its true subject to ensure proper threading.
+    const lastVendorMsg = [...threadMessages].reverse().find((msg) => {
+      const fromAddr = (msg.from ?? [])[0] ?? {};
+      return fromAddr.email === selectedQuotation.sender_email;
+    });
+
+    const targetMsg = lastVendorMsg || threadMessages[0];
+    const subject = targetMsg.subject || '';
+
+    setIsSending(true);
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(`${API_BASE}/api/email/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          thread_id: selectedQuotation.thread_id,
+          project_id: projectId,
+          subject: subject,
+          to_email: selectedQuotation.sender_email,
+          to_name: selectedQuotation.vendor_name || '',
+          body: replyText,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to send reply');
+      }
+
+      toast.success(`Reply sent to ${selectedQuotation.vendor_name || selectedQuotation.sender_email}`);
+      setReplyText('');
+
+      // Refresh thread to show the new message
+      handleEmailClick(selectedQuotation);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send reply');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -336,21 +388,34 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
             <div className="border-t border-gray-200 bg-white px-6 py-4 flex-shrink-0">
               <textarea
                 placeholder={`Reply to ${selectedQuotation.vendor_name || selectedQuotation.sender_email}…`}
-                className="w-full min-h-[100px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:border-transparent resize-none"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                disabled={isSending || !selectedQuotation.thread_id}
+                className="w-full min-h-[100px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:border-transparent resize-none disabled:bg-gray-50 disabled:text-gray-500"
               />
               <div className="flex items-center justify-end gap-2 mt-3">
-                <Button variant="outline" onClick={() => setEmailThreadOpen(false)} className="text-sm">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setReplyText('');
+                    setEmailThreadOpen(false);
+                  }}
+                  disabled={isSending}
+                  className="text-sm"
+                >
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => {
-                    toast.success(`Reply sent to ${selectedQuotation.vendor_name || selectedQuotation.sender_email}`);
-                    setEmailThreadOpen(false);
-                  }}
+                  onClick={handleSendReply}
+                  disabled={isSending || !replyText.trim() || !selectedQuotation.thread_id}
                   className="bg-[#3B82F6] text-white hover:bg-[#2563EB] text-sm"
                 >
-                  <Send className="w-4 h-4 mr-2" />
-                  Send
+                  {isSending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
+                  {isSending ? 'Sending…' : 'Send'}
                 </Button>
               </div>
             </div>
