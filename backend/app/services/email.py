@@ -511,6 +511,11 @@ def search_rfp_threads_nylas(
         except Exception as exc:
             print(f"[email] Nylas inbound grant thread search failed: {exc}")
 
+    print(
+        f"[email] Total messages found for {subject_tag}: {len(all_messages)}",
+        flush=True,
+    )
+
     if not all_messages:
         return []
 
@@ -522,6 +527,11 @@ def search_rfp_threads_nylas(
     threads: dict[str, dict] = {}
     for msg in all_messages:
         tid = msg.thread_id or msg.id
+        from_email = (
+            msg.from_[0]["email"] if hasattr(msg, "from_") and msg.from_ else ""
+        ).lower()
+        is_reply = from_email not in our_emails
+
         to_addrs = _addr_list(getattr(msg, "to", None))
         from_addrs = _addr_list(getattr(msg, "from_", None))
         all_addrs = to_addrs + from_addrs
@@ -554,16 +564,33 @@ def search_rfp_threads_nylas(
                 "subject": msg.subject or "",
                 "latest_date": msg.date,
                 "message_count": 1,
+                "has_reply": is_reply,
             }
         else:
             threads[tid]["message_count"] += 1
+            if is_reply:
+                threads[tid]["has_reply"] = True
             if msg.date and (
                 threads[tid]["latest_date"] is None
                 or msg.date > threads[tid]["latest_date"]
             ):
                 threads[tid]["latest_date"] = msg.date
 
-    return list(threads.values())
+    for tid, t in threads.items():
+        print(
+            f"[email] Thread {tid}: count={t['message_count']}, has_reply={t['has_reply']}, vendor={t['vendor_email']}",
+            flush=True,
+        )
+
+    # Filter out threads that only have 1 message (the original outgoing invite)
+    # UNLESS that single message is actually a reply/inbound email.
+    active_threads = [t for t in threads.values() if t.get("has_reply")]
+
+    print(
+        f"[email] Returning {len(active_threads)} active threads for RFP {project_id}",
+        flush=True,
+    )
+    return active_threads
 
 
 def download_attachment_content(

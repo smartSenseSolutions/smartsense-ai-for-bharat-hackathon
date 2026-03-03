@@ -62,11 +62,20 @@ async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
         print(f"[search-rfp] external phase raised: {external_raw}")
         external_raw = []
 
-    all_results = [VendorSearchResult(**r) for r in internal_raw + external_raw]
+    # Cross-source deduplication by name (Internal takes priority)
+    all_results_raw = internal_raw + external_raw
+    seen_names = set()
+    deduplicated = []
+
+    for r in all_results_raw:
+        name = (r.get("vendor_name") or "").strip().lower()
+        if name not in seen_names:
+            seen_names.add(name)
+            deduplicated.append(VendorSearchResult(**r))
 
     return VendorSmartSearchResponse(
-        results=all_results,
-        total=len(all_results),
+        results=deduplicated,
+        total=len(deduplicated),
         internal_count=len(internal_raw),
         external_count=len(external_raw),
         query=intent.search_text,
@@ -113,11 +122,20 @@ async def smart_search_vendors(request: VendorSmartSearchRequest):
         print(f"[search] external phase raised: {external_raw}")
         external_raw = []
 
-    all_results = [VendorSearchResult(**r) for r in internal_raw + external_raw]
+    # Cross-source deduplication by name (Internal takes priority)
+    all_results_raw = internal_raw + external_raw
+    seen_names = set()
+    deduplicated = []
+
+    for r in all_results_raw:
+        name = (r.get("vendor_name") or "").strip().lower()
+        if name not in seen_names:
+            seen_names.add(name)
+            deduplicated.append(VendorSearchResult(**r))
 
     return VendorSmartSearchResponse(
-        results=all_results,
-        total=len(all_results),
+        results=deduplicated,
+        total=len(deduplicated),
         internal_count=len(internal_raw),
         external_count=len(external_raw),
         query=request.query,

@@ -55,6 +55,7 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
   const [isThreadLoading, setIsThreadLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [quotationAttachments, setQuotationAttachments] = useState<Record<string, { id: string; filename: string; content_type: string; size: number; messageId: string }[]>>({});
 
   const projectId = proposal?.id?.startsWith('RFP-')
     ? proposal.id.replace('RFP-', '')
@@ -71,6 +72,35 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
       .catch(() => setQuotations([]))
       .finally(() => setIsLoading(false));
   }, [projectId]);
+
+  // Fetch attachments for all quotes with a thread_id after list loads
+  useEffect(() => {
+    if (quotations.length === 0) return;
+    const token = localStorage.getItem('auth_token');
+    const fetchAll = async () => {
+      const results: Record<string, any[]> = {};
+      await Promise.all(
+        quotations
+          .filter(q => q.thread_id)
+          .map(async (quote) => {
+            try {
+              const res = await fetch(`${API_BASE}/api/email/threads/${quote.thread_id}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const atts = (data.messages ?? []).flatMap((msg: any) =>
+                  (msg.attachments ?? []).map((a: any) => ({ ...a, messageId: msg.id }))
+                );
+                if (atts.length > 0) results[quote.id] = atts;
+              }
+            } catch { /* ignore per-quote failures */ }
+          })
+      );
+      setQuotationAttachments(results);
+    };
+    fetchAll();
+  }, [quotations]);
 
   const filteredQuotations = quotations.filter(q =>
     searchQuery === '' ||
@@ -229,20 +259,30 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
                         <span className="text-xs text-gray-400">{quote.sender_email}</span>
                       </div>
                       {quote.notes && (
-                        <p className="text-xs text-gray-600 mb-1.5 line-clamp-1">{quote.notes}</p>
+                        <p className="text-xs text-gray-500 mb-1.5 line-clamp-1">{quote.notes}</p>
                       )}
-                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {quote.price != null && (
-                          <span className="flex items-center gap-1">
-                            <IndianRupee className="w-3.5 h-3.5" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-100">
+                            <IndianRupee className="w-3 h-3" />
                             {Number(quote.price).toLocaleString('en-IN')}
                           </span>
                         )}
                         {quote.delivery_timeline && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 text-xs font-medium border border-orange-100">
+                            <Clock className="w-3 h-3" />
                             {quote.delivery_timeline}
                           </span>
+                        )}
+                        {/* Attachment file type icons */}
+                        {(quotationAttachments[quote.id] ?? []).slice(0, 6).map((att, i) => (
+                          <span key={i} title={att.filename} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-xs text-gray-500">
+                            <FileIcon contentType={att.content_type} filename={att.filename} className="w-3 h-3" />
+                            <span className="truncate max-w-[80px]">{att.filename.split('.').pop()?.toUpperCase()}</span>
+                          </span>
+                        ))}
+                        {(quotationAttachments[quote.id]?.length ?? 0) > 6 && (
+                          <span className="text-xs text-gray-400">+{quotationAttachments[quote.id].length - 6} more</span>
                         )}
                       </div>
                     </div>

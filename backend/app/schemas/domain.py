@@ -88,8 +88,10 @@ class VendorRecommendationScore(BaseModel):
     overall_score: float
     is_recommended: bool
     recommendation_reason: str
-    citation: str
+    citation: str  # Deprecated in favor of citations, but keeping for compatibility
+    citations: dict[str, str]  # Granular citations for each metric
 
 
 class AIRecommendationsResponse(BaseModel):
     recommendations: List[VendorRecommendationScore]
+    metadata: Optional[dict[str, Any]] = None  # Caching metadata (fingerprints, etc.)
