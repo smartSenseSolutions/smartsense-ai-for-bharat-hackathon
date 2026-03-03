@@ -298,9 +298,17 @@ def generate_rfp_pdf(
         fontSize=8,
         fontName=_FONT_BOLD,
         textColor=gray900,
-        spaceBefore=14,
+        spaceBefore=12,
         spaceAfter=6,
         borderPadding=(0, 0, 2, 0),
+    )
+    toc_sty = sty(
+        "TOC",
+        fontSize=9,
+        fontName=_FONT,
+        textColor=gray700,
+        leading=14,
+        leftIndent=12,
     )
     body_sty = sty(
         "B",
@@ -330,36 +338,61 @@ def generate_rfp_pdf(
 
     story = []
 
-    # ── Header ───────────────────────────────────────────────────────────────
-    story.append(
-        Paragraph(h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")), title_sty)
-    )
-    story.append(Paragraph(h(project_name or rfp_data.get("projectName", "")), sub_sty))
-    story.append(Spacer(1, 4))
+    label_sty = sty("L", fontSize=8, fontName=_FONT_BOLD, textColor=gray500, alignment=TA_LEFT)
+    meta_sty = sty("M", fontSize=8, fontName=_FONT, textColor=gray500, alignment=TA_LEFT)
+    meta_sty_bold = sty("MB", fontSize=9, fontName=_FONT_BOLD, textColor=gray900, alignment=TA_LEFT)
 
-    meta_rows = [
-        [
-            Paragraph("<b>Document No.</b>", label_sty),
-            Paragraph(h(rfp_data.get("documentNo", "")), meta_sty),
-        ],
-        [
-            Paragraph("<b>Date</b>", label_sty),
-            Paragraph(h(rfp_data.get("documentDate", "")), meta_sty),
-        ],
+    meta_story = [
+        Paragraph("DOCUMENT NO.", label_sty),
+        Paragraph(h(rfp_data.get("documentNo", "")), meta_sty_bold),
+        Paragraph(h(rfp_data.get("documentDate", "")), meta_sty),
     ]
-    t = Table(meta_rows, colWidths=[3.5 * cm, W - 3.5 * cm])
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    story.append(t)
-    story.append(HRFlowable(width="100%", thickness=0.75, color=gray200, spaceAfter=10))
+    
+    # Header Table: Title on left, Meta on right (now also left aligned content)
+    header_table = Table([
+        [
+            [
+                Paragraph(h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")), title_sty),
+                Paragraph(h(project_name or rfp_data.get("projectName", "")), sub_sty),
+            ],
+            meta_story
+        ]
+    ], colWidths=[W - 5*cm, 5*cm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=0.75, color=gray200, spaceAfter=15))
 
     # ── Executive Summary ────────────────────────────────────────────────────
     summary = h(rfp_data.get("executiveSummary", ""))
     if summary:
         story.append(section("EXECUTIVE SUMMARY"))
-        for line in summary.split("\n"):
-            if line.strip():
-                story.append(Paragraph(line.strip(), body_sty))
-        story.append(Spacer(1, 6))
+        # Clean up summary to be a single paragraph
+        clean_summary = " ".join(summary.split())
+        story.append(Paragraph(clean_summary, body_sty))
+        story.append(Spacer(1, 12))
+
+    # ── Table of Contents ────────────────────────────────────────────────────
+    story.append(section("TABLE OF CONTENTS"))
+    toc_items = [
+        "1. Product Requirements",
+        "2. Technical Specifications",
+        "3. Quality Standards & Compliance",
+        "4. Scope of Work",
+        "5. Proposal Submission Requirements",
+        "6. Evaluation Criteria",
+        "7. Terms & Conditions",
+        "8. Cost Born By Respondents",
+        "9. Changes in Scope",
+        "10. Clarification of Submissions",
+        "11. Contact Information",
+    ]
+    for item in toc_items:
+        story.append(Paragraph(item, toc_sty))
+    story.append(Spacer(1, 12))
 
     # ── Product Requirements ─────────────────────────────────────────────────
     story.append(section("1. PRODUCT REQUIREMENTS"))
@@ -492,6 +525,30 @@ def generate_rfp_pdf(
         story.append(section("10. CLARIFICATION OF SUBMISSIONS"))
         story.append(Paragraph(h(clarification), body_sty))
         story.append(Spacer(1, 6))
+
+    # ── Contact Information ──────────────────────────────────────────────────
+    story.append(section("11. CONTACT INFORMATION"))
+    story.append(Paragraph("For any queries or clarifications regarding this RFP, please contact:", body_sty))
+    contact_rows = [
+        ["Procurement Department", h(rfp_data.get("contactEmail", "procurement@company.com"))]
+    ]
+    ctat = Table(
+        [
+            [Paragraph(f"<b>{r[0]}</b>", label_sty), Paragraph(r[1], body_sty)]
+            for r in contact_rows
+        ],
+        colWidths=[5 * cm, W - 5 * cm],
+    )
+    ctat.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(ctat)
+    story.append(Spacer(1, 6))
 
     # ── Footer ───────────────────────────────────────────────────────────────
     story.append(

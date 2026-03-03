@@ -115,7 +115,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
       documentTitle: 'REQUEST FOR PROPOSAL',
       documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
       documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      executiveSummary: 'This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of {productName}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.',
+      executiveSummary: 'This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of {productName}. The primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements. We are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks. Respondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence. The selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.',
       productName: '',
       quantity: '',
       specifications: [] as string[],
@@ -258,7 +258,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
           documentTitle: 'REQUEST FOR PROPOSAL',
           documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
           documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${data.rfp_data.productName || 'products'}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
+          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${data.rfp_data.productName || 'products'}. The primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements. We are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks. Respondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence. The selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
           productName: data.rfp_data.productName || '',
           quantity: data.rfp_data.quantity || '',
           deliveryTimeline: data.rfp_data.deliveryTimeline || '',
@@ -319,7 +319,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
           documentTitle: 'REQUEST FOR PROPOSAL',
           documentNo: `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
           documentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${aiResponse.rfpData.productName || 'products'}.\nThe primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements.\nWe are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks.\nRespondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence.\nThe selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
+          executiveSummary: `This Request for Proposal (RFP) is issued to solicit comprehensive proposals from qualified and experienced suppliers for the procurement of ${aiResponse.rfpData.productName || 'products'}. The primary objective of this RFP is to establish a strategic partnership with a reliable vendor who can consistently provide high-quality products meeting our stringent technical specifications and rigorous delivery requirements. We are seeking comprehensive solutions that not only fulfill our immediate quantity needs but also align with our long-term quality standards and compliance frameworks. Respondents are expected to demonstrate proven industry experience, robust supply chain capabilities, competitive pricing models, and a strong commitment to excellence. The selected partner will collaborate closely with our procurement team to ensure seamless execution, continuous support, and mutually beneficial value generation throughout the entirety of this engagement.`,
           ...aiResponse.rfpData
         });
         setRfpGenerated(true);
@@ -608,13 +608,6 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
                 <Underline className="w-4 h-4 text-gray-600" />
               </button>
               <div className="w-px h-6 bg-gray-200 mx-1"></div>
-              <button onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertUnorderedList'); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <List className="w-4 h-4 text-gray-600" />
-              </button>
-              <button onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertOrderedList'); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <ListOrdered className="w-4 h-4 text-gray-600" />
-              </button>
-              <div className="w-px h-6 bg-gray-200 mx-1"></div>
               <button onMouseDown={(e) => { e.preventDefault(); document.execCommand('justifyLeft'); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <AlignLeft className="w-4 h-4 text-gray-600" />
               </button>
@@ -623,10 +616,6 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
               </button>
               <button onMouseDown={(e) => { e.preventDefault(); document.execCommand('justifyRight'); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <AlignRight className="w-4 h-4 text-gray-600" />
-              </button>
-              <div className="w-px h-6 bg-gray-200 mx-1"></div>
-              <button onMouseDown={(e) => { e.preventDefault(); const url = prompt('Enter link URL:'); if (url) document.execCommand('createLink', false, url); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <Link className="w-4 h-4 text-gray-600" />
               </button>
             </div>
           </div>
@@ -690,17 +679,17 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
                           className="text-lg text-gray-600 font-medium w-full max-w-lg mt-1"
                         />
                       </div>
-                      <div className="text-right">
+                      <div className="text-left">
                         <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Document No.</p>
                         <EditorInput
                           value={rfpData.documentNo || `RFP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`}
                           onChange={(val) => setRfpData({ ...rfpData, documentNo: val })}
-                          className="text-sm font-bold text-gray-900 text-right w-[150px] p-0 m-0 ml-auto"
+                          className="text-sm font-bold text-gray-900 text-left w-[150px] p-0 m-0"
                         />
                         <EditorInput
                           value={rfpData.documentDate || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                           onChange={(val) => setRfpData({ ...rfpData, documentDate: val })}
-                          className="text-xs text-gray-500 mt-2 text-right w-[150px] p-0 m-0 ml-auto"
+                          className="text-xs text-gray-500 mt-2 text-left w-[150px] p-0 m-0"
                         />
                       </div>
                     </div>
