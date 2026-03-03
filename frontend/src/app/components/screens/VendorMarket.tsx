@@ -40,6 +40,37 @@ interface VendorMarketProps {
   onCreateRFP: (vendor: any) => void;
 }
 
+const AnimatedCounter = ({ value, duration = 3000 }: { value: number; duration?: number }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    // Safety check: if value is not a valid number, don't start animation
+    const targetValue = Number(value);
+    if (isNaN(targetValue)) {
+      setCount(0);
+      return;
+    }
+
+    if (targetValue === 0) {
+      setCount(0);
+      return;
+    }
+
+    let startTimestamp: number | null = null;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      setCount(Math.floor(progress * targetValue));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [value, duration]);
+
+  return <>{count.toLocaleString()}</>;
+};
+
 const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
 
 export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: VendorMarketProps) {
@@ -60,6 +91,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
   const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
   const [isInternalLoading, setIsInternalLoading] = useState(false);
   const [isExternalLoading, setIsExternalLoading] = useState(false);
+  const [marketStats, setMarketStats] = useState({ verified_vendors_count: 0, product_categories_count: 0, total_projects_count: 0 });
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -69,12 +101,28 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // Fetch history on mount
+  // Fetch history and stats on mount
   useEffect(() => {
     fetch(`${API_BASE}/api/search/history`)
       .then(res => res.json())
       .then(data => setSearchHistory(data))
       .catch(err => console.error('[VendorMarket] Failed to load history:', err));
+
+    fetch(`${API_BASE}/api/stats/marketplace`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch stats');
+        return res.json();
+      })
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setMarketStats({
+            verified_vendors_count: Number(data.verified_vendors_count) || 0,
+            product_categories_count: Number(data.product_categories_count) || 0,
+            total_projects_count: Number(data.total_projects_count) || 0
+          });
+        }
+      })
+      .catch(err => console.error('[VendorMarket] Failed to load stats:', err));
   }, []);
 
   const hasSearched = submittedQuery.length > 0;
@@ -223,16 +271,22 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
             {/* Stats */}
             <div className="mt-16 grid grid-cols-3 gap-8">
               <div className="text-center py-6 px-4 rounded-xl border border-[#eeeff1] bg-white">
-                <p className="text-3xl font-bold text-gray-900 mb-2">15K+</p>
+                <p className="text-3xl font-bold text-gray-900 mb-2">
+                  <AnimatedCounter value={marketStats.verified_vendors_count} />
+                </p>
                 <p className="text-sm text-gray-600 font-medium">Verified Vendors</p>
               </div>
               <div className="text-center py-6 px-4 rounded-xl border border-[#eeeff1] bg-white">
-                <p className="text-3xl font-bold text-gray-900 mb-2">50L+</p>
+                <p className="text-3xl font-bold text-gray-900 mb-2">
+                  <AnimatedCounter value={marketStats.product_categories_count} />
+                </p>
                 <p className="text-sm text-gray-600 font-medium">Product Categories</p>
               </div>
               <div className="text-center py-6 px-4 rounded-xl border border-[#eeeff1] bg-white">
-                <p className="text-3xl font-bold text-gray-900 mb-2">98%</p>
-                <p className="text-sm text-gray-600 font-medium">Avg Trust Score</p>
+                <p className="text-3xl font-bold text-gray-900 mb-2">
+                  <AnimatedCounter value={marketStats.total_projects_count} />
+                </p>
+                <p className="text-sm text-gray-600 font-medium">Total Projects</p>
               </div>
             </div>
           </div>
