@@ -199,7 +199,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
                       <h3 className="text-sm font-semibold text-gray-900 mb-1">{rfp.name}</h3>
                       <p className="text-xs text-gray-500">{rfp.products}</p>
                     </div>
-                    <Badge className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 font-medium">
+                    <Badge className="text-xs px-2 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-100 font-medium">
                       {rfp.status}
                     </Badge>
                   </div>
@@ -226,7 +226,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
                       <h3 className="text-sm font-semibold text-gray-900 mb-1">{rfp.name}</h3>
                       <p className="text-xs text-gray-500">{rfp.products}</p>
                     </div>
-                    <Badge className="text-xs px-2 py-0.5 bg-green-50 text-green-700 font-medium">
+                    <Badge className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
                       {rfp.status}
                     </Badge>
                   </div>
