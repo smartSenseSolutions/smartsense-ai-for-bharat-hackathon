@@ -31,6 +31,7 @@ from app.schemas.email import (
     BulkSendResult,
     BulkSendRFPRequest,
     EmailSendResponse,
+    ReplyEmailRequest,
     SendRFPEmailRequest,
     ThreadMessagesResponse,
 )
@@ -40,6 +41,7 @@ from app.services.email import (
     list_thread_messages,
     parse_quotation_with_bedrock,
     send_bulk_rfp_emails,
+    send_reply_email,
     send_rfp_email,
     verify_webhook_signature,
 )
@@ -50,6 +52,7 @@ router = APIRouter(prefix="/api/email", tags=["Email"])
 # ---------------------------------------------------------------------------
 # Send RFP — single vendor
 # ---------------------------------------------------------------------------
+
 
 @router.post("/send-rfp", response_model=EmailSendResponse)
 async def send_rfp_to_vendor(request: SendRFPEmailRequest):
@@ -85,6 +88,7 @@ async def send_rfp_to_vendor(request: SendRFPEmailRequest):
 # Send RFP — bulk
 # ---------------------------------------------------------------------------
 
+
 @router.post("/send-rfp/bulk", response_model=BulkSendResponse)
 async def send_rfp_bulk(request: BulkSendRFPRequest):
     """
@@ -115,8 +119,47 @@ async def send_rfp_bulk(request: BulkSendRFPRequest):
 
 
 # ---------------------------------------------------------------------------
+# Reply Email
+# ---------------------------------------------------------------------------
+
+
+@router.post("/reply", response_model=EmailSendResponse)
+async def reply_to_thread(request: ReplyEmailRequest):
+    """
+    Send a reply to an existing email thread.
+    Used by the Quotations sidebar UI to respond directly to a vendor.
+    """
+    try:
+        message = send_reply_email(
+            project_id=request.project_id,
+            subject=request.subject,
+            to_email=request.to_email,
+            to_name=request.to_name,
+            body=request.body,
+        )
+    except RuntimeError as exc:
+        print(f"[email] RuntimeError in reply_to_thread: {exc}")
+        if hasattr(exc, "__dict__"):
+            print(f"[email] exc.__dict__: {exc.__dict__}")
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        print(f"[email] Exception in reply_to_thread: {exc}")
+        if hasattr(exc, "__dict__"):
+            print(f"[email] exc.__dict__: {exc.__dict__}")
+        raise HTTPException(status_code=500, detail=f"Failed to send reply: {exc}")
+
+    return EmailSendResponse(
+        message_id=getattr(message, "id", "") or "",
+        thread_id=getattr(message, "thread_id", "") or request.thread_id,
+        subject=getattr(message, "subject", ""),
+        sent_to=request.to_email,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Thread messages
 # ---------------------------------------------------------------------------
+
 
 @router.get("/threads/{thread_id}", response_model=ThreadMessagesResponse)
 async def get_thread_messages(thread_id: str):
@@ -140,11 +183,15 @@ async def get_thread_messages(thread_id: str):
 async def download_attachment(attachment_id: str, message_id: str = Query(...)):
     """Download an email attachment from Nylas by its attachment ID."""
     try:
-        content, content_type, filename = download_attachment_content(attachment_id, message_id)
+        content, content_type, filename = download_attachment_content(
+            attachment_id, message_id
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to download attachment: {exc}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to download attachment: {exc}"
+        )
 
     return StreamingResponse(
         io.BytesIO(content),
@@ -156,6 +203,7 @@ async def download_attachment(attachment_id: str, message_id: str = Query(...)):
 # ---------------------------------------------------------------------------
 # Nylas webhook — GET challenge
 # ---------------------------------------------------------------------------
+
 
 @router.get("/webhook")
 async def webhook_challenge(challenge: str):
@@ -172,6 +220,7 @@ async def webhook_challenge(challenge: str):
 # ---------------------------------------------------------------------------
 # Nylas webhook — POST events
 # ---------------------------------------------------------------------------
+
 
 @router.post("/webhook")
 async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
@@ -219,11 +268,7 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
         return {"status": "ignored", "reason": f"Project {project_id} not found"}
 
     # Look up the vendor by sender email
-    vendor = (
-        db.query(Vendor)
-        .filter(Vendor.contact_email == sender_email)
-        .first()
-    )
+    vendor = db.query(Vendor).filter(Vendor.contact_email == sender_email).first()
 
     # Parse quotation data from the email body using Bedrock
     parsed = parse_quotation_with_bedrock(email_body, project.project_name)
