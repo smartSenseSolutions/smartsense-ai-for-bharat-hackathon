@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.models.domain import Vendor, VendorDocument
 from app.services.rfp import get_bedrock_client
 import json
+from app.services.activity import log_activity
 
 
 def get_textract_client():
@@ -262,6 +263,16 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
             errors.append({"row": i, "error": str(exc)})
 
     db.commit()
+    
+    # Log activity for bulk upload
+    if created > 0 or updated > 0:
+        log_activity(
+            db,
+            type="vendor_uploaded",
+            title=f"Vendors data uploaded",
+            description=f"Created: {created}, Updated: {updated}, Documents: {documents_queued}"
+        )
+
     return {
         "total": len(rows),
         "created": created,
@@ -355,6 +366,15 @@ def create_vendor(db: Session, data: dict) -> Vendor:
     db.commit()
     db.refresh(vendor)
     index_vendor_to_opensearch(vendor)
+    
+    # Log activity for single vendor creation
+    log_activity(
+        db,
+        type="vendor_uploaded",
+        title=f"New Vendor created: {vendor.name}",
+        vendor_id=vendor.id
+    )
+    
     return vendor
 
 

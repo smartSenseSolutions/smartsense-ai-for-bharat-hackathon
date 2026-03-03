@@ -13,6 +13,7 @@ from app.services.email import (
     download_attachment_content,
     search_rfp_threads_nylas,
 )
+from app.services.activity import log_activity
 
 
 def clean_html(raw_html: str) -> str:
@@ -404,6 +405,15 @@ async def generate_ai_recommendations(
         # 3. Cache the recommendations
         project.ai_recommendations = res_dict
         db.commit()
+
+        # Log activity
+        log_activity(
+            db,
+            type="ai_recommendation",
+            title=f"AI recommendations generated",
+            description=f"Generated for project: {project.project_name}",
+            project_id=project_id
+        )
 
         return res_dict
 

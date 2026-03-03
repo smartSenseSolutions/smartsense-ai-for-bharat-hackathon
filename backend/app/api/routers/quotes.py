@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.domain import ProjectInvitedVendor, Quote
 from app.schemas.domain import QuoteScoreRequest, NegotiationEmailRequest
-from app.services.email import search_rfp_threads_nylas
 from app.services.quotes import (
     score_quotes,
     generate_negotiation_email,
     generate_ai_recommendations,
 )
+from app.services.activity import log_activity
 
 router = APIRouter(prefix="/api/quotes", tags=["Quotes & Negotiation"])
 
@@ -152,6 +152,15 @@ async def create_negotiation_email(request: NegotiationEmailRequest):
         quote_price=mock_quote_price,
         target_discount=request.target_reduction_percentage,
         context=request.context,
+    )
+
+    # Log activity
+    db = next(get_db())
+    log_activity(
+        db,
+        type="negotiation_started",
+        title=f"Negotiation started",
+        description=f"Drafted negotiation email for quote {request.quote_id}"
     )
 
     return {"status": "success", "email_body": email_body}

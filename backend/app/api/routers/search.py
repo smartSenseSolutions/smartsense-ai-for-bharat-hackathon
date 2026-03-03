@@ -24,6 +24,7 @@ from app.services.search import (
     search_gemini_vendors,
     search_vendors_by_rfp_intent,
 )
+from app.services.activity import log_activity
 
 router = APIRouter(prefix="/api/search", tags=["Search"])
 
@@ -73,7 +74,7 @@ async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
             seen_names.add(name)
             deduplicated.append(VendorSearchResult(**r))
 
-    return VendorSmartSearchResponse(
+    response = VendorSmartSearchResponse(
         results=deduplicated,
         total=len(deduplicated),
         internal_count=len(internal_raw),
@@ -81,6 +82,17 @@ async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
         query=intent.search_text,
         top_n=settings.VENDOR_SEARCH_TOP_N,
     )
+    
+    # Log activity
+    db = next(get_db())
+    log_activity(
+        db,
+        type="vendor_search",
+        title=f"Marketplace search performed",
+        description=f"RFP-driven search for project: {request.rfp_data.get('projectName', 'Unknown')}"
+    )
+
+    return response
 
 
 @router.post("/vendors", response_model=SearchResponse)
@@ -132,8 +144,7 @@ async def smart_search_vendors(request: VendorSmartSearchRequest):
         if name not in seen_names:
             seen_names.add(name)
             deduplicated.append(VendorSearchResult(**r))
-
-    return VendorSmartSearchResponse(
+    response = VendorSmartSearchResponse(
         results=deduplicated,
         total=len(deduplicated),
         internal_count=len(internal_raw),
@@ -141,6 +152,17 @@ async def smart_search_vendors(request: VendorSmartSearchRequest):
         query=request.query,
         top_n=settings.VENDOR_SEARCH_TOP_N,
     )
+
+    # Log activity
+    db = next(get_db())
+    log_activity(
+        db,
+        type="vendor_search",
+        title=f"Marketplace search performed",
+        description=f"Query: {request.query}"
+    )
+
+    return response
 
 
 @router.post("/vendors/smart/internal", response_model=VendorSmartSearchResponse)

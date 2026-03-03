@@ -30,6 +30,8 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-procure_ai}
+    volumes:
+      - ./backend:/app
     depends_on:
       db:
         condition: service_healthy
@@ -44,6 +46,9 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
 

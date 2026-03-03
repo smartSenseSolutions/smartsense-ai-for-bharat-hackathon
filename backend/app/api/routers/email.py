@@ -45,6 +45,7 @@ from app.services.email import (
     send_rfp_email,
     verify_webhook_signature,
 )
+from app.services.activity import log_activity
 
 router = APIRouter(prefix="/api/email", tags=["Email"])
 
@@ -307,6 +308,16 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
     db.add(quote)
     db.commit()
     db.refresh(quote)
+
+    # Log activity
+    log_activity(
+        db,
+        type="quote_received",
+        title=f"Quote received from {sender_name}",
+        description=f"Project: {project.project_name}, Price: {quote.currency} {quote.price}",
+        project_id=project_id,
+        vendor_id=vendor.id if vendor else None
+    )
 
     return {
         "status": "processed",
