@@ -425,13 +425,25 @@ async def search_vendors_hybrid(
     fused = _rrf_fuse(vector_hits, keyword_hits, k=rrf_k)
 
     results = []
-    for vid, rrf_score in fused[:top_n]:
+    seen_names = set()
+    for vid, rrf_score in fused:
         # vendor_data must exist in at least one of the hit lists
         hit_data = vector_hits.get(vid) or keyword_hits.get(vid)
         if not hit_data:
             continue
 
         vendor_data = hit_data["source"]
+
+        # Deduplication by name
+        name = (vendor_data.get("vendor_name") or "").strip()
+        canonical_name = name.lower()
+        if canonical_name in seen_names:
+            continue
+        seen_names.add(canonical_name)
+
+        if len(results) >= top_n:
+            break
+
         raw_vec = vector_hits.get(vid, {}).get("score", 0.0)
         raw_kw = keyword_hits.get(vid, {}).get("score", 0.0)
 

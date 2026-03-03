@@ -112,13 +112,15 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
 
 @router.get("/by-project/{project_id}/recommendations")
 async def get_project_ai_recommendations(
-    project_id: str, db: Session = Depends(get_db)
+    project_id: str, refresh: bool = False, db: Session = Depends(get_db)
 ):
     """
     Generate and return AI recommendations for all vendors who submitted a quote for a given project.
     """
     try:
-        recommendations = await generate_ai_recommendations(project_id, db)
+        recommendations = await generate_ai_recommendations(
+            project_id, db, force_refresh=refresh
+        )
         return recommendations
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

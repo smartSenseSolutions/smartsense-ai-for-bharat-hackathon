@@ -1,4 +1,4 @@
-import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search, RefreshCw } from 'lucide-react';
 import { useState, Fragment, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -1712,27 +1712,36 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
     ? proposal.id.replace('RFP-', '')
     : proposal?.id;
 
-  useEffect(() => {
-    const fetchRecommendations = async () => {
-      if (!projectId) return;
-      setIsLoading(true);
-      try {
-        const token = localStorage.getItem('auth_token');
-        const res = await fetch(`${API_BASE}/api/quotes/by-project/${projectId}/recommendations`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setRecommendations(data.recommendations || []);
-        } else {
-          toast.error("Failed to fetch AI recommendations");
-        }
-      } catch (error) {
-        console.error("Error fetching logic:", error);
-      } finally {
-        setIsLoading(false);
+  const fetchRecommendations = async (refresh = false) => {
+    if (!projectId) return;
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const url = new URL(`${API_BASE}/api/quotes/by-project/${projectId}/recommendations`);
+      if (refresh) {
+        url.searchParams.append('refresh', 'true');
       }
-    };
+
+      const res = await fetch(url.toString(), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRecommendations(data.recommendations || []);
+        if (refresh) {
+          toast.success("AI recommendations refreshed");
+        }
+      } else {
+        toast.error("Failed to fetch AI recommendations");
+      }
+    } catch (error) {
+      console.error("Error fetching logic:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchRecommendations();
   }, [projectId]);
 
@@ -1761,6 +1770,18 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
         <div>
           <h2 className="text-lg font-semibold text-gray-900">AI Recommendation</h2>
           <p className="text-sm text-gray-500">AI-powered analysis using Amazon Nova models</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchRecommendations(true)}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh Analysis
+          </Button>
         </div>
       </div>
 
@@ -1818,16 +1839,17 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
                   </td>
                   {metrics.map((metric) => {
                     const score = vendor[metric.field as keyof typeof vendor] as number || 0;
+                    const citation = vendor.citations?.[metric.field] || vendor.citation;
                     return (
                       <td key={metric.id} className="px-4 py-3 text-center relative group">
                         <span className={`text-sm font-medium ${getScoreColor(score)} cursor-help border-b border-dashed border-gray-300`}>
                           {score}
                         </span>
                         {/* Tooltip for metrics */}
-                        {vendor.citation && (
+                        {citation && (
                           <div className="absolute z-50 hidden group-hover:block w-72 p-3 bg-gray-900 text-white text-xs rounded shadow-lg bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none text-left">
-                            <p className="font-semibold mb-1 text-gray-200">AI Citation</p>
-                            <p className="text-gray-300 italic whitespace-pre-wrap break-words">"{vendor.citation}"</p>
+                            <p className="font-semibold mb-1 text-gray-200">AI Citation ({metric.label})</p>
+                            <p className="text-gray-300 italic whitespace-pre-wrap break-words">"{citation}"</p>
                             {/* Little triangle arrow at bottom */}
                             <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 mt-0"></div>
                           </div>

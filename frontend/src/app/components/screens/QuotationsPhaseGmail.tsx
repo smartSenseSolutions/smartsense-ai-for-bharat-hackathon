@@ -56,6 +56,7 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
   const [replyText, setReplyText] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [isSending, setIsSending] = useState(false);
+  const [quotationAttachments, setQuotationAttachments] = useState<Record<string, { id: string; filename: string; content_type: string; size: number; messageId: string }[]>>({});
 
   const projectId = proposal?.id?.startsWith('RFP-')
     ? proposal.id.replace('RFP-', '')
@@ -72,6 +73,35 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
       .catch(() => setQuotations([]))
       .finally(() => setIsLoading(false));
   }, [projectId]);
+
+  // Fetch attachments for all quotes with a thread_id after list loads
+  useEffect(() => {
+    if (quotations.length === 0) return;
+    const token = localStorage.getItem('auth_token');
+    const fetchAll = async () => {
+      const results: Record<string, any[]> = {};
+      await Promise.all(
+        quotations
+          .filter(q => q.thread_id)
+          .map(async (quote) => {
+            try {
+              const res = await fetch(`${API_BASE}/api/email/threads/${quote.thread_id}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const atts = (data.messages ?? []).flatMap((msg: any) =>
+                  (msg.attachments ?? []).map((a: any) => ({ ...a, messageId: msg.id }))
+                );
+                if (atts.length > 0) results[quote.id] = atts;
+              }
+            } catch { /* ignore per-quote failures */ }
+          })
+      );
+      setQuotationAttachments(results);
+    };
+    fetchAll();
+  }, [quotations]);
 
   const filteredQuotations = quotations.filter(q =>
     searchQuery === '' ||
