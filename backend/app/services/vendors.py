@@ -3,6 +3,7 @@ import csv
 import io
 import uuid
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.core.config import settings
 from app.models.domain import Vendor, VendorDocument
 from app.services.rfp import get_bedrock_client
@@ -78,6 +79,7 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
 # ---------------------------------------------------------------------------
 
 CSV_HEADERS = [
+    "vendor_id",
     "vendor_name",
     "location",
     "estd",
@@ -97,6 +99,7 @@ def get_csv_template() -> str:
     writer.writerow(CSV_HEADERS)
     writer.writerow(
         [
+            "",  # vendor_id
             "Acme Supplies Pvt Ltd",
             "Mumbai, Maharashtra",
             "2005",
@@ -142,8 +145,9 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
         try:
             with db.begin_nested():
                 name = (row.get("vendor_name") or "").strip()
-                if not name:
-                    raise ValueError("vendor_name is required")
+                vendor_id = (row.get("vendor_id") or "").strip()
+                if not name and not vendor_id:
+                    raise ValueError("vendor_name or vendor_id is required")
 
                 estd_raw = (row.get("estd") or "").strip()
                 estd = int(estd_raw) if estd_raw else None
@@ -174,7 +178,17 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
                     website=(row.get("website") or "").strip() or None,
                 )
 
-                existing = db.query(Vendor).filter(Vendor.name == name).first()
+                existing = None
+                if name:
+                    existing = (
+                        db.query(Vendor)
+                        .filter(func.lower(Vendor.name) == name.lower())
+                        .first()
+                    )
+
+                if not existing and vendor_id:
+                    existing = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+
                 if existing:
                     for key, value in fields.items():
                         setattr(existing, key, value)
@@ -333,7 +347,7 @@ def index_vendor_to_opensearch(vendor: Vendor, certificate_details: list[dict] =
 
 def create_vendor(db: Session, data: dict) -> Vendor:
     name = data.get("name", "")
-    existing = db.query(Vendor).filter(Vendor.name == name).first()
+    existing = db.query(Vendor).filter(func.lower(Vendor.name) == name.lower()).first()
     if existing:
         for key, value in data.items():
             setattr(existing, key, value)
