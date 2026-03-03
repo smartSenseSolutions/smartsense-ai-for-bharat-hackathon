@@ -11,6 +11,7 @@ from app.api.routers import (
     documents,
     projects,
     email,
+    stats,
 )
 from app.core.database import SessionLocal
 from app.services.auth import seed_superuser
@@ -56,6 +57,7 @@ app.include_router(translation.router)
 app.include_router(documents.router)
 app.include_router(projects.router)
 app.include_router(email.router)
+app.include_router(stats.router)
 
 
 @app.get("/")
