@@ -1,4 +1,5 @@
 import os
+import asyncio
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
@@ -100,7 +101,7 @@ Extract the following fields:
 - search_text: clean 6-12 word phrase for semantic search, e.g. "steel pipe manufacturer Maharashtra ISO certified"
 """
 
-        result = structured_llm.invoke(prompt)
+        result = await structured_llm.ainvoke(prompt)
         print(
             f"[search] intent: products={result.products} loc={result.location} "
             f"certs={result.certifications} type={result.vendor_type} text='{result.search_text}'"
@@ -157,7 +158,7 @@ Fill in the QueryIntent:
 - keywords: 4-8 highly specific technical keywords from the RFP content.
 - search_text: A precise 8-12 word search phrase using ONLY terms from the RFP. NO generic words.
 """
-        result = structured_llm.invoke(prompt)
+        result = await structured_llm.ainvoke(prompt)
         print(
             f"[search-rfp] extracted intent: products={result.products} loc={result.location} "
             f"certs={result.certifications} type={result.vendor_type} text='{result.search_text}'"
@@ -360,60 +361,61 @@ async def search_vendors_hybrid(
     vector_hits: dict[str, dict] = {}
     keyword_hits: dict[str, dict] = {}
 
-    # ── Phase 1: vector search on clean search_text ─────────────────────────
-    # OpenSearch cosinesimil scores = 1 + cosine_similarity (range [0, 2]).
-    # min_score filters out vendors whose cosine similarity is below the threshold
-    # before they ever reach RRF, preventing irrelevant results from being ranked.
-    vec_min_score = settings.VENDOR_SEARCH_VECTOR_MIN_SCORE
-    embed_text = intent.search_text or query or ""
-    try:
-        query_embedding = generate_embedding(embed_text)
-        vector_response = client.search(
-            index=VENDOR_INDEX_NAME,
-            body={
-                "min_score": vec_min_score,
-                "size": candidates,
-                "query": {
-                    "knn": {
-                        "embedding": {
-                            "vector": query_embedding,
-                            "k": candidates,
+    # ── Phases 1 & 2: Run kNN vector search and BM25 keyword search concurrently ──
+    async def run_vector_search():
+        vec_min_score = settings.VENDOR_SEARCH_VECTOR_MIN_SCORE
+        embed_text = intent.search_text or query or ""
+        try:
+            query_embedding = await asyncio.to_thread(generate_embedding, embed_text)
+            response = await asyncio.to_thread(
+                client.search,
+                index=VENDOR_INDEX_NAME,
+                body={
+                    "min_score": vec_min_score,
+                    "size": candidates,
+                    "query": {
+                        "knn": {
+                            "embedding": {
+                                "vector": query_embedding,
+                                "k": candidates,
+                            }
                         }
-                    }
+                    },
+                    "_source": {"excludes": ["embedding"]},
                 },
-                "_source": {"excludes": ["embedding"]},
-            },
-        )
-        for hit in vector_response["hits"]["hits"]:
-            vid = hit["_source"].get("vendor_id") or hit["_id"]
-            vector_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
-        print(
-            f"[search] vector phase: {len(vector_hits)} hits above {vec_min_score} | embed: '{embed_text}'"
-        )
-    except Exception as e:
-        print(f"[search] vector phase failed: {e}")
-        traceback.print_exc()
+            )
+            for hit in response["hits"]["hits"]:
+                vid = hit["_source"].get("vendor_id") or hit["_id"]
+                vector_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
+            print(
+                f"[search] vector phase: {len(vector_hits)} hits above {vec_min_score} | embed: '{embed_text}'"
+            )
+        except Exception as e:
+            print(f"[search] vector phase failed: {e}")
+            traceback.print_exc()
 
-    # ── Phase 2: field-targeted keyword search ───────────────────────────────
-    try:
-        keyword_response = client.search(
-            index=VENDOR_INDEX_NAME,
-            body={
-                "size": candidates,
-                "query": _build_keyword_query(intent),
-                "_source": {"excludes": ["embedding"]},
-            },
-        )
-        for hit in keyword_response["hits"]["hits"]:
-            vid = hit["_source"].get("vendor_id") or hit["_id"]
-            keyword_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
-        print(
-            f"[search] keyword phase: {len(keyword_hits)} hits | "
-            f"products={intent.products} loc={intent.location} certs={intent.certifications}"
-        )
-    except Exception as e:
-        print(f"[search] keyword phase failed: {e}")
-        traceback.print_exc()
+    async def run_keyword_search():
+        try:
+            response = await asyncio.to_thread(
+                client.search,
+                index=VENDOR_INDEX_NAME,
+                body={
+                    "size": candidates,
+                    "query": _build_keyword_query(intent),
+                    "_source": {"excludes": ["embedding"]},
+                },
+            )
+            for hit in response["hits"]["hits"]:
+                vid = hit["_source"].get("vendor_id") or hit["_id"]
+                keyword_hits[vid] = {"source": hit["_source"], "score": hit["_score"]}
+            print(
+                f"[search] keyword phase: {len(keyword_hits)} hits | products={intent.products} loc={intent.location} certs={intent.certifications}"
+            )
+        except Exception as e:
+            print(f"[search] keyword phase failed: {e}")
+            traceback.print_exc()
+
+    await asyncio.gather(run_vector_search(), run_keyword_search())
 
     if not vector_hits and not keyword_hits:
         print("[search] both phases returned no results")
@@ -532,7 +534,7 @@ async def search_external_vendors(query: str, num_results: int = 10):
     # 1. Search local OpenSearch
     try:
         os_client = _get_opensearch_client()
-        query_embedding = generate_embedding(query)
+        query_embedding = await asyncio.to_thread(generate_embedding, query)
 
         search_body = {
             "size": num_results,
@@ -618,7 +620,7 @@ async def search_gemini_vendors(query: str, num_results: int = 5) -> list[dict]:
         Use your internal knowledge and search to find their details. Do NOT return directory sites like Indiamart or Justdial.
         """
 
-        response = structured_llm.invoke(prompt)
+        response = await structured_llm.ainvoke(prompt)
 
         if not response or not response.vendors:
             print("[search] Gemini returned empty structured response")

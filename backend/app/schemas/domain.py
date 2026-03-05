@@ -38,6 +38,9 @@ class ProjectCreate(BaseModel):
     status: str = "draft"
     rfp_data: Optional[Any] = None
     rfp_expiry: Optional[str] = None
+    rfp_deadline: Optional[datetime] = None
+    delivery_timeline: Optional[datetime] = None
+    search_intent: Optional[Any] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -45,6 +48,9 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
     rfp_data: Optional[Any] = None
     rfp_expiry: Optional[str] = None
+    rfp_deadline: Optional[datetime] = None
+    delivery_timeline: Optional[datetime] = None
+    search_intent: Optional[Any] = None
 
 
 class ProjectResponse(BaseModel):
@@ -53,6 +59,9 @@ class ProjectResponse(BaseModel):
     status: str
     rfp_data: Optional[Any]
     rfp_expiry: Optional[str] = None
+    rfp_deadline: Optional[datetime] = None
+    delivery_timeline: Optional[datetime] = None
+    search_intent: Optional[Any] = None
     created_at: datetime
 
     class Config:

@@ -45,6 +45,9 @@ class Project(Base):
     status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT)
     rfp_data = Column(JSON, nullable=True)  # Full RFP configuration/draft
     rfp_expiry = Column(String, nullable=True)  # RFP expiry date in dd-mm-yyyy format
+    rfp_deadline = Column(DateTime, nullable=True)
+    delivery_timeline = Column(DateTime, nullable=True)
+    search_intent = Column(JSON, nullable=True)
     ai_recommendations = Column(
         JSON, nullable=True
     )  # Cached AI evaluations of vendor quotes
