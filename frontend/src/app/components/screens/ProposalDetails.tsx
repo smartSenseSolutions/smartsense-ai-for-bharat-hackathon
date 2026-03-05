@@ -1,5 +1,5 @@
-import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search, RefreshCw } from 'lucide-react';
-import { useState, Fragment, useEffect } from 'react';
+import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { useState, Fragment, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
@@ -128,7 +128,7 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
         <div className="bg-white rounded-xl p-5">
           {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} onInvitesSent={() => setCurrentPhase('quotations')} />}
           {currentPhase === 'quotations' && <QuotationsPhaseGmail proposal={proposal} />}
-          {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} />}
+          {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} onPhaseChange={setCurrentPhase} />}
           {currentPhase === 'negotiations' && <NegotiationsPhase proposal={proposal} />}
           {currentPhase === 'closure' && <ClosurePhase proposal={proposal} />}
         </div>
@@ -1702,11 +1702,13 @@ function QuotationsPhase({ proposal }: { proposal: any }) {
 }
 
 // AI Recommendation Phase Component
-function AIRecommendationPhase({ proposal }: { proposal: any }) {
+function AIRecommendationPhase({ proposal, onPhaseChange }: { proposal: any, onPhaseChange?: (phase: any) => void }) {
   const [hoveredVendor, setHoveredVendor] = useState<string | null>(null);
   const [emailPanelVendor, setEmailPanelVendor] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [isMovingToNegotiations, setIsMovingToNegotiations] = useState(false);
 
   const projectId = proposal?.id?.startsWith('RFP-')
     ? proposal.id.replace('RFP-', '')
@@ -1749,6 +1751,58 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
     setEmailPanelVendor(vendor);
   };
 
+  const handleToggleSelectAll = () => {
+    if (selectedEmails.size === recommendations.length) {
+      setSelectedEmails(new Set());
+    } else {
+      setSelectedEmails(new Set(recommendations.map(r => r.vendor_email)));
+    }
+  };
+
+  const handleToggleSelectVendor = (email: string) => {
+    const next = new Set(selectedEmails);
+    if (next.has(email)) {
+      next.delete(email);
+    } else {
+      next.add(email);
+    }
+    setSelectedEmails(next);
+  };
+
+  const handleMoveToNegotiations = async () => {
+    if (selectedEmails.size === 0) return;
+    setIsMovingToNegotiations(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_BASE}/api/quotes/bulk-status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          vendor_emails: Array.from(selectedEmails),
+          status: 'negotiating'
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`Moved ${selectedEmails.size} vendors to negotiations`);
+        if (onPhaseChange) {
+          onPhaseChange('negotiations');
+        }
+      } else {
+        toast.error("Failed to move vendors to negotiations");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred");
+    } finally {
+      setIsMovingToNegotiations(false);
+    }
+  };
+
   const metrics = [
     { id: 'price', label: 'Price Competitiveness', field: 'price_score' },
     { id: 'delivery', label: 'Delivery Timeline', field: 'delivery_score' },
@@ -1772,6 +1826,17 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
           <p className="text-sm text-gray-500">AI-powered analysis using Amazon Nova models</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedEmails.size > 0 && (
+            <Button
+              onClick={handleMoveToNegotiations}
+              disabled={isMovingToNegotiations}
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+              size="sm"
+            >
+              {isMovingToNegotiations ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
+              Move to Negotiations ({selectedEmails.size})
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1790,6 +1855,14 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
+              <th className="px-4 py-3 w-10">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={recommendations.length > 0 && selectedEmails.size === recommendations.length}
+                  onChange={handleToggleSelectAll}
+                />
+              </th>
               <th className="text-left text-xs font-medium text-gray-600 px-4 py-3 w-64">Vendor</th>
               {metrics.map((metric) => (
                 <th key={metric.id} className="text-center text-xs font-medium text-gray-600 px-4 py-3">
@@ -1824,6 +1897,14 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
                   onMouseEnter={() => vendor.is_recommended && setHoveredVendor(uniqueId)}
                   onMouseLeave={() => setHoveredVendor(null)}
                 >
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={selectedEmails.has(vendor.vendor_email)}
+                      onChange={() => handleToggleSelectVendor(vendor.vendor_email)}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -2148,828 +2229,435 @@ function AIRecommendationPhase({ proposal }: { proposal: any }) {
 }
 
 // Negotiations Phase Component
-function NegotiationsPhase({ proposal }: { proposal: any }) {
-  const [activeTab, setActiveTab] = useState<'voice' | 'email'>('voice');
+function NegotiationsPhase({ proposal }: { proposal: any }): any {
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedQuote, setSelectedQuote] = useState<any>(null);
+  const [threadMessages, setThreadMessages] = useState<any[]>([]);
+  const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [insights, setInsights] = useState<any>(null);
+  const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(true);
+  const threadEndRef = useRef<HTMLDivElement>(null);
 
-  const voiceCalls = [
-    {
-      id: 1,
-      vendor: 'Global Electronics Supply',
-      callDate: '22 Jan 2026 10:00',
-      duration: '35 min',
-      participants: 3,
-      keyPoints: ['7% discount negotiated', '50-day delivery confirmed', '3-year warranty included'],
-      outcome: 'In Progress',
-      status: 'active',
-      transcript: [
-        { speaker: 'AI Agent', time: '00:00', text: 'Good morning Sarah, thank you for joining this negotiation call.' },
-        { speaker: 'Sarah Chen', time: '00:15', text: 'Good morning, happy to discuss our proposal.' },
-        { speaker: 'Ram Krish', time: '00:25', text: 'We appreciate your quote of $118,500. Can we discuss the delivery timeline?' },
-        { speaker: 'Sarah Chen', time: '00:48', text: 'Certainly. Our standard delivery is 60 days, but we can expedite to 50 days for this order.' },
-        { speaker: 'Sandeep Kumar', time: '01:15', text: 'That works for our timeline. What about the pricing? Is there any flexibility on the quoted amount?' },
-        { speaker: 'Sarah Chen', time: '01:42', text: 'Given the volume you are ordering, we can offer a 7% discount, bringing the total to approximately $110,205.' },
-        { speaker: 'AI Agent', time: '02:08', text: 'That is a competitive offer. Can you confirm the warranty terms included in this pricing?' },
-        { speaker: 'Sarah Chen', time: '02:30', text: 'Yes, we include a comprehensive 3-year warranty covering all manufacturing defects and performance issues.' },
-        { speaker: 'Ram Krish', time: '02:58', text: 'Excellent. What are the payment terms for this order?' },
-        { speaker: 'Sarah Chen', time: '03:20', text: 'We typically work with 30% upfront, 40% on delivery, and 30% after installation and acceptance.' },
-        { speaker: 'Sandeep Kumar', time: '03:48', text: 'That payment structure is acceptable. Can we discuss the technical specifications to ensure compatibility?' },
-        { speaker: 'Sarah Chen', time: '04:15', text: 'Absolutely. All our products meet ISO 13485 certification and FDA approval standards.' },
-        { speaker: 'AI Agent', time: '04:42', text: 'Perfect. What about support and maintenance after installation?' },
-        { speaker: 'Sarah Chen', time: '05:05', text: 'We provide 24/7 technical support and quarterly maintenance visits as part of the warranty package.' },
-        { speaker: 'Ram Krish', time: '05:35', text: 'That sounds comprehensive. Can we get this agreement documented by end of week?' },
-        { speaker: 'Sarah Chen', time: '05:58', text: 'Yes, I will have our legal team prepare the contract and send it over by Friday.' },
-        { speaker: 'Sandeep Kumar', time: '06:22', text: 'Great. One more thing - do you offer training for our staff on using these products?' },
-        { speaker: 'Sarah Chen', time: '06:45', text: 'Yes, we include a 2-day on-site training session as part of the installation package.' },
-        { speaker: 'AI Agent', time: '07:10', text: 'Excellent. I think we have covered all the key points. Ram, Sandeep, any other questions?' },
-        { speaker: 'Ram Krish', time: '07:28', text: 'No, I think we are good. Thank you Sarah for the productive discussion.' },
-        { speaker: 'Sandeep Kumar', time: '07:42', text: 'Agreed. Looking forward to receiving the contract.' },
-        { speaker: 'Sarah Chen', time: '07:55', text: 'Thank you both. I will send the contract by Friday and follow up early next week.' },
-        { speaker: 'AI Agent', time: '08:12', text: 'Thank you everyone. I will send a summary of this call to all participants.' },
-      ],
-    },
-    {
-      id: 2,
-      vendor: 'TechDistributor Inc.',
-      callDate: '22 Jan 2026 14:00',
-      duration: '28 min',
-      participants: 3,
-      keyPoints: ['Price match offered', 'Exclusive partnership discussed', 'Follow-up scheduled'],
-      outcome: 'Completed',
-      status: 'completed',
-      transcript: [
-        { speaker: 'AI Agent', time: '00:00', text: 'Good afternoon Mike, thank you for joining.' },
-        { speaker: 'Mike Johnson', time: '00:12', text: 'Ready to discuss our proposal.' },
-        { speaker: 'Ram Krish', time: '00:28', text: 'We appreciate your competitive pricing. Can we discuss the exclusive partnership terms?' },
-        { speaker: 'Mike Johnson', time: '00:52', text: 'Absolutely. We are interested in a long-term partnership with preferred pricing.' },
-        { speaker: 'Sandeep Kumar', time: '01:18', text: 'What kind of price match guarantee can you offer?' },
-        { speaker: 'Mike Johnson', time: '01:45', text: 'We can match any competitor pricing within 24 hours if you provide documentation.' },
-        { speaker: 'AI Agent', time: '02:10', text: 'That is a strong commitment. What about minimum order quantities?' },
-        { speaker: 'Mike Johnson', time: '02:35', text: 'For exclusive partners, we can reduce MOQ by 30%.' },
-        { speaker: 'Ram Krish', time: '03:02', text: 'Excellent. When can we schedule a follow-up to finalize the agreement?' },
-        { speaker: 'Mike Johnson', time: '03:28', text: 'How about next Wednesday at 2 PM?' },
-        { speaker: 'Sandeep Kumar', time: '03:48', text: 'That works for us. We will prepare the partnership framework.' },
-        { speaker: 'AI Agent', time: '04:12', text: 'Perfect. I will send calendar invites to everyone.' },
-      ],
-    },
-    {
-      id: 3,
-      vendor: 'MedSupply International',
-      callDate: '21 Jan 2026 15:30',
-      duration: '42 min',
-      participants: 4,
-      keyPoints: ['Bulk order pricing discussed', 'Monthly payment plan agreed', 'Extended warranty negotiated'],
-      outcome: 'Completed',
-      status: 'completed',
-      transcript: [
-        { speaker: 'AI Agent', time: '00:00', text: 'Good afternoon, thank you for joining this negotiation session.' },
-        { speaker: 'David Martinez', time: '00:18', text: 'Thank you for having us. We are excited to discuss the proposal.' },
-        { speaker: 'Ram Krish', time: '00:35', text: 'We would like to explore bulk order pricing options.' },
-        { speaker: 'David Martinez', time: '01:02', text: 'For bulk orders over 100,000 units, we can offer tiered discounts up to 15%.' },
-        { speaker: 'Sandeep Kumar', time: '01:30', text: 'That is attractive. Can we structure this with monthly payment plans?' },
-        { speaker: 'David Martinez', time: '01:58', text: 'Yes, we can arrange net-60 terms with monthly installments.' },
-        { speaker: 'AI Agent', time: '02:25', text: 'What about the warranty coverage for bulk orders?' },
-        { speaker: 'David Martinez', time: '02:50', text: 'We can extend the warranty to 5 years for commitments over 200,000 units annually.' },
-        { speaker: 'Ram Krish', time: '03:18', text: 'That is very competitive. Can we get this in writing by tomorrow?' },
-        { speaker: 'David Martinez', time: '03:42', text: 'Absolutely. I will have our team prepare the formal proposal.' },
-        { speaker: 'Sandeep Kumar', time: '04:08', text: 'Great. We will review and respond within 48 hours.' },
-        { speaker: 'AI Agent', time: '04:35', text: 'Thank you David. Looking forward to the proposal.' },
-      ],
-    },
-    {
-      id: 4,
-      vendor: 'BioMedical Supplies Ltd.',
-      callDate: '21 Jan 2026 11:00',
-      duration: '31 min',
-      participants: 2,
-      keyPoints: ['Quality certification confirmed', 'Delivery schedule aligned', 'Support terms clarified'],
-      outcome: 'In Progress',
-      status: 'active',
-      transcript: [
-        { speaker: 'AI Agent', time: '00:00', text: 'Good morning, welcome to the negotiation call.' },
-        { speaker: 'Emma Wilson', time: '00:12', text: 'Good morning, ready to finalize the terms.' },
-        { speaker: 'Ram Krish', time: '00:28', text: 'Can we discuss the quality certification requirements?' },
-        { speaker: 'Emma Wilson', time: '00:55', text: 'All our products have ISO 13485 and CE marking certifications.' },
-        { speaker: 'Sandeep Kumar', time: '01:22', text: 'Perfect. What is your delivery schedule for certified products?' },
-        { speaker: 'Emma Wilson', time: '01:48', text: 'We maintain stock of certified products with 3-week delivery guarantee.' },
-        { speaker: 'AI Agent', time: '02:15', text: 'Excellent. Can you provide ongoing technical support?' },
-        { speaker: 'Emma Wilson', time: '02:40', text: 'Yes, we offer 24/7 support with dedicated account manager.' },
-        { speaker: 'Ram Krish', time: '03:08', text: 'That meets our requirements. Let us proceed with the contract.' },
-        { speaker: 'Emma Wilson', time: '03:32', text: 'Wonderful. I will send the contract draft by end of day.' },
-        { speaker: 'AI Agent', time: '03:55', text: 'Thank you Emma. We will review and get back to you.' },
-      ],
-    },
-    {
-      id: 5,
-      vendor: 'Healthcare Distributors',
-      callDate: '20 Jan 2026 16:00',
-      duration: '25 min',
-      participants: 3,
-      keyPoints: ['Regional distribution discussed', 'Pricing structure finalized', 'Contract duration agreed'],
-      outcome: 'Completed',
-      status: 'completed',
-      transcript: [
-        { speaker: 'AI Agent', time: '00:00', text: 'Good afternoon everyone, thank you for joining.' },
-        { speaker: 'Robert Chen', time: '00:10', text: 'Happy to be here. Let us discuss the distribution terms.' },
-        { speaker: 'Ram Krish', time: '00:22', text: 'We need regional coverage across three states.' },
-        { speaker: 'Robert Chen', time: '00:48', text: 'We have established distribution networks in all major cities across those regions.' },
-        { speaker: 'Sandeep Kumar', time: '01:15', text: 'What is the pricing structure for regional distribution?' },
-        { speaker: 'Robert Chen', time: '01:42', text: 'We offer flat-rate pricing with volume discounts. No additional logistics fees.' },
-        { speaker: 'AI Agent', time: '02:08', text: 'How long is the typical contract duration?' },
-        { speaker: 'Robert Chen', time: '02:32', text: 'Standard contracts are 2 years with option to renew annually thereafter.' },
-        { speaker: 'Ram Krish', time: '02:58', text: 'That works well. Can we finalize this agreement this week?' },
-        { speaker: 'Robert Chen', time: '03:22', text: 'Yes, I will prepare all documents and send them over by Thursday.' },
-        { speaker: 'Sandeep Kumar', time: '03:45', text: 'Perfect. We are looking forward to this partnership.' },
-        { speaker: 'AI Agent', time: '04:08', text: 'Thank you Robert. Talk to you soon.' },
-      ],
-    },
-  ];
+  const projectId = proposal?.id?.startsWith('RFP-')
+    ? proposal.id.replace('RFP-', '')
+    : proposal?.id;
 
-  const emailThreads = [
-    {
-      id: 1,
-      vendor: 'Global Electronics Supply',
-      email: 'info@globalsupply.com',
-      subject: 'Price Negotiation Discussion',
-      lastMessage: '22 Jan 2026 16:30',
-      status: 'active',
-      priority: 'high',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@globalsupply.com',
-          timestamp: '22 Jan 2026 11:00',
-          message: 'Thank you for your quotation of $118,500. We would like to discuss the possibility of a volume discount given our order size.',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'info@globalsupply.com',
-          fromName: 'Global Electronics Supply',
-          to: 'procurement@company.com',
-          timestamp: '22 Jan 2026 14:20',
-          message: 'We appreciate your interest. We can offer a 5% discount bringing the total to $112,575 for orders above 50,000 units.',
-          type: 'received',
-        },
-        {
-          id: 3,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@globalsupply.com',
-          timestamp: '22 Jan 2026 16:30',
-          message: 'That sounds reasonable. Can we also discuss the delivery timeline? Our target is 45 days.',
-          type: 'sent',
-        },
-      ],
-    },
-    {
-      id: 2,
-      vendor: 'TechDistributor Inc.',
-      email: 'contact@techdist.com',
-      subject: 'Contract Terms Review',
-      lastMessage: '21 Jan 2026 09:45',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'contact@techdist.com',
-          timestamp: '21 Jan 2026 08:00',
-          message: 'We have reviewed your proposal. Could you provide more details on the warranty terms?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'contact@techdist.com',
-          fromName: 'TechDistributor Inc.',
-          to: 'procurement@company.com',
-          timestamp: '21 Jan 2026 09:45',
-          message: 'Certainly. We offer a comprehensive 3-year warranty with 24/7 support and free replacements for manufacturing defects.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 3,
-      vendor: 'MedSupply International',
-      email: 'orders@medsupply.com',
-      subject: 'Bulk Order Discount Request',
-      lastMessage: '21 Jan 2026 15:20',
-      status: 'active',
-      priority: 'high',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'orders@medsupply.com',
-          timestamp: '21 Jan 2026 10:30',
-          message: 'We are interested in placing a bulk order of 75,000 units. Can you offer a tiered pricing structure?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'orders@medsupply.com',
-          fromName: 'MedSupply International',
-          to: 'procurement@company.com',
-          timestamp: '21 Jan 2026 13:15',
-          message: 'Yes, we can offer 8% discount for 75,000+ units. This brings your total to ₹95,40,000 with free shipping across India.',
-          type: 'received',
-        },
-        {
-          id: 3,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'orders@medsupply.com',
-          timestamp: '21 Jan 2026 15:20',
-          message: 'Great! Can we also negotiate the payment terms to Net 45 instead of Net 30?',
-          type: 'sent',
-        },
-      ],
-    },
-    {
-      id: 4,
-      vendor: 'BioMed Supplies',
-      email: 'contact@biomedsupplies.com',
-      subject: 'Delivery Schedule Adjustment',
-      lastMessage: '20 Jan 2026 17:00',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'contact@biomedsupplies.com',
-          timestamp: '20 Jan 2026 14:00',
-          message: 'We need to adjust the delivery schedule to accommodate our warehouse renovation. Can we push it back by 2 weeks?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'contact@biomedsupplies.com',
-          fromName: 'BioMed Supplies',
-          to: 'procurement@company.com',
-          timestamp: '20 Jan 2026 17:00',
-          message: 'We can accommodate the 2-week delay without any additional charges. Updated delivery date will be 15 Feb 2026.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 5,
-      vendor: 'HealthCare Innovations',
-      email: 'sales@healthcareinnovations.com',
-      subject: 'Quality Certification Discussion',
-      lastMessage: '20 Jan 2026 12:30',
-      status: 'active',
-      priority: 'high',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'sales@healthcareinnovations.com',
-          timestamp: '20 Jan 2026 09:00',
-          message: 'Can you provide updated ISO 13485 and CE marking certificates for the current product batch?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'sales@healthcareinnovations.com',
-          fromName: 'HealthCare Innovations',
-          to: 'procurement@company.com',
-          timestamp: '20 Jan 2026 12:30',
-          message: 'Absolutely. I will send the updated certificates by end of day. All certifications are valid until Dec 2027.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 6,
-      vendor: 'Surgical Equipment Ltd',
-      email: 'info@surgicalequip.com',
-      subject: 'Exclusive Partnership Terms',
-      lastMessage: '19 Jan 2026 16:45',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@surgicalequip.com',
-          timestamp: '19 Jan 2026 11:00',
-          message: 'We are considering an exclusive 2-year partnership. What additional benefits can you offer?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'info@surgicalequip.com',
-          fromName: 'Surgical Equipment Ltd',
-          to: 'procurement@company.com',
-          timestamp: '19 Jan 2026 14:20',
-          message: 'For exclusive partnership, we offer 12% discount, priority shipping, dedicated account manager, and quarterly business reviews.',
-          type: 'received',
-        },
-        {
-          id: 3,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@surgicalequip.com',
-          timestamp: '19 Jan 2026 16:45',
-          message: 'Perfect. Let us proceed with drafting the exclusive partnership agreement.',
-          type: 'sent',
-        },
-      ],
-    },
-    {
-      id: 7,
-      vendor: 'Medical Devices Corp',
-      email: 'info@meddevicescorp.com',
-      subject: 'Shipping Cost Negotiation',
-      lastMessage: '19 Jan 2026 11:15',
-      status: 'active',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@meddevicescorp.com',
-          timestamp: '19 Jan 2026 08:30',
-          message: 'The shipping costs seem high for Mumbai to Delhi route. Can we negotiate this down?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'info@meddevicescorp.com',
-          fromName: 'Medical Devices Corp',
-          to: 'procurement@company.com',
-          timestamp: '19 Jan 2026 11:15',
-          message: 'We can reduce shipping by 25% if you consolidate orders to bi-weekly instead of weekly shipments.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 8,
-      vendor: 'PharmaSupply Global',
-      email: 'orders@pharmasupplyglobal.com',
-      subject: 'Extended Payment Terms',
-      lastMessage: '18 Jan 2026 15:30',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'orders@pharmasupplyglobal.com',
-          timestamp: '18 Jan 2026 10:00',
-          message: 'Given our long-standing relationship, can we extend payment terms to Net 60 days?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'orders@pharmasupplyglobal.com',
-          fromName: 'PharmaSupply Global',
-          to: 'procurement@company.com',
-          timestamp: '18 Jan 2026 15:30',
-          message: 'We can approve Net 60 days with a 2% early payment discount if paid within 30 days.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 9,
-      vendor: 'Lab Equipment Solutions',
-      email: 'support@labequipmentsolutions.com',
-      subject: 'Warranty Extension Proposal',
-      lastMessage: '18 Jan 2026 09:20',
-      status: 'active',
-      priority: 'high',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'support@labequipmentsolutions.com',
-          timestamp: '17 Jan 2026 16:00',
-          message: 'Can we extend the standard 2-year warranty to 4 years for critical lab equipment?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'support@labequipmentsolutions.com',
-          fromName: 'Lab Equipment Solutions',
-          to: 'procurement@company.com',
-          timestamp: '18 Jan 2026 09:20',
-          message: 'Extended 4-year warranty is available for an additional 6% of the total order value. This includes on-site support.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 10,
-      vendor: 'Diagnostic Supplies India',
-      email: 'sales@diagnosticsupplies.in',
-      subject: 'Volume Commitment Agreement',
-      lastMessage: '17 Jan 2026 14:45',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'sales@diagnosticsupplies.in',
-          timestamp: '17 Jan 2026 11:00',
-          message: 'We can commit to quarterly orders of minimum 50,000 units. What pricing can you offer?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'sales@diagnosticsupplies.in',
-          fromName: 'Diagnostic Supplies India',
-          to: 'procurement@company.com',
-          timestamp: '17 Jan 2026 14:45',
-          message: 'With quarterly commitment, we offer ₹145 per unit (15% off regular price) with guaranteed stock availability.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 11,
-      vendor: 'MediCare Distributors',
-      email: 'contact@medicaredist.com',
-      subject: 'Rush Order Premium Waiver',
-      lastMessage: '17 Jan 2026 10:30',
-      status: 'active',
-      priority: 'high',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'contact@medicaredist.com',
-          timestamp: '16 Jan 2026 15:00',
-          message: 'We have an urgent requirement for 10,000 units within 7 days. Can you waive the rush order premium?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'contact@medicaredist.com',
-          fromName: 'MediCare Distributors',
-          to: 'procurement@company.com',
-          timestamp: '17 Jan 2026 10:30',
-          message: 'We can waive 50% of the rush premium if you commit to regular monthly orders for the next 6 months.',
-          type: 'received',
-        },
-      ],
-    },
-    {
-      id: 12,
-      vendor: 'Advanced Medical Systems',
-      email: 'info@advancedmed.com',
-      subject: 'Training & Installation Costs',
-      lastMessage: '16 Jan 2026 17:15',
-      status: 'completed',
-      messages: [
-        {
-          id: 1,
-          from: 'procurement@company.com',
-          fromName: 'You',
-          to: 'info@advancedmed.com',
-          timestamp: '16 Jan 2026 13:00',
-          message: 'The training and installation costs are adding 18% to the total. Can these be included in the base price?',
-          type: 'sent',
-        },
-        {
-          id: 2,
-          from: 'info@advancedmed.com',
-          fromName: 'Advanced Medical Systems',
-          to: 'procurement@company.com',
-          timestamp: '16 Jan 2026 17:15',
-          message: 'We can include basic installation and 2-day training at no extra cost. Advanced training will be charged separately.',
-          type: 'received',
-        },
-      ],
-    },
-  ];
+  const fetchNegotiations = async () => {
+    if (!projectId) return;
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_BASE}/api/quotes/by-project/${projectId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const negotiatingQuotes = data.filter((q: any) => q.status === 'negotiating');
+        setQuotes(negotiatingQuotes);
+        if (negotiatingQuotes.length > 0 && !selectedQuote) {
+          handleSelectQuote(negotiatingQuotes[0]);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const [selectedVoiceCall, setSelectedVoiceCall] = useState(voiceCalls[0]);
-  const [selectedEmailThread, setSelectedEmailThread] = useState<any>(null);
-  const [emailThreadOpen, setEmailThreadOpen] = useState(false);
+  useEffect(() => { fetchNegotiations(); }, [projectId]);
+
+  useEffect(() => {
+    if (threadMessages.length > 0 && threadEndRef.current) {
+      setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 150);
+    }
+  }, [threadMessages]);
+
+  const fetchInsights = async (quote: any) => {
+    if (!quote.thread_id) { setInsights(null); return; }
+    setIsInsightsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const params = new URLSearchParams({
+        thread_id: quote.thread_id,
+        vendor_name: quote.vendor_name || '',
+        vendor_email: quote.sender_email || '',
+        project_id: projectId || '',
+      });
+      const res = await fetch(`${API_BASE}/api/quotes/negotiation-insights?${params}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) setInsights(await res.json());
+    } catch (err) {
+      console.error('Insights error:', err);
+    } finally {
+      setIsInsightsLoading(false);
+    }
+  };
+
+  const handleSelectQuote = async (quote: any) => {
+    setSelectedQuote(quote);
+    setThreadMessages([]);
+    setReplyText('');
+    setInsights(null);
+
+    if (!quote.thread_id) return;
+
+    setIsThreadLoading(true);
+    const token = localStorage.getItem('auth_token');
+    try {
+      const threadParams = new URLSearchParams({
+        project_id: projectId || '',
+        vendor_email: quote.sender_email || '',
+      });
+      const res = await fetch(`${API_BASE}/api/email/threads/${quote.thread_id}?${threadParams}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setThreadMessages(data.messages || []);
+      }
+    } catch (err) {
+      console.error('Thread fetch error:', err);
+    } finally {
+      setIsThreadLoading(false);
+    }
+    fetchInsights(quote);
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !selectedQuote?.thread_id) return;
+
+    // Extract subject from latest vendor message for proper Gmail threading
+    const lastVendorMsg = [...threadMessages].find((msg: any) => {
+      const fromAddr = (msg.from ?? [])[0] ?? {};
+      return fromAddr.email === selectedQuote.sender_email;
+    });
+    const targetMsg = lastVendorMsg || threadMessages[0];
+    const subject = targetMsg?.subject || selectedQuote.email_subject || 'Re: Negotiation';
+
+    setIsSending(true);
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(`${API_BASE}/api/email/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          thread_id: selectedQuote.thread_id,
+          project_id: projectId,
+          subject,
+          to_email: selectedQuote.sender_email,
+          to_name: selectedQuote.vendor_name || '',
+          body: replyText,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`Reply sent to ${selectedQuote.vendor_name}`);
+        setReplyText('');
+        handleSelectQuote(selectedQuote);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to send reply');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('An error occurred');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleDownloadAttachment = async (att: any, messageId: string) => {
+    const token = localStorage.getItem('auth_token');
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/email/attachments/${att.id}?message_id=${messageId}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = att.filename || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(`Failed to download ${att.filename}`);
+    }
+  };
+
+  const sentimentConfig: Record<string, { color: string; bg: string; label: string }> = {
+    cooperative: { color: 'text-green-700', bg: 'bg-green-50 ring-green-200', label: '😊 Cooperative' },
+    neutral: { color: 'text-gray-700', bg: 'bg-gray-50 ring-gray-200', label: '😐 Neutral' },
+    resistant: { color: 'text-amber-700', bg: 'bg-amber-50 ring-amber-200', label: '😤 Resistant' },
+    aggressive: { color: 'text-red-700', bg: 'bg-red-50 ring-red-200', label: '🔥 Aggressive' },
+  };
+
+  if (isLoading && quotes.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+        <span className="ml-2 text-sm text-gray-500">Loading negotiations...</span>
+      </div>
+    );
+  }
+
+  if (quotes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+        <Mail className="w-10 h-10 text-gray-300 mb-3" />
+        <p className="text-gray-500 text-sm">No vendors in the negotiation phase yet.</p>
+        <p className="text-gray-400 text-xs mt-1">Move vendors from the AI Recommendation stage to start negotiating.</p>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Negotiations</h2>
-          <p className="text-sm text-gray-500">AI-powered voice negotiations and email communications</p>
+    <div className="grid grid-cols-12 gap-5 h-[calc(100vh-280px)]">
+      {/* Left Pane: Vendor List */}
+      <div className="col-span-3 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Negotiations</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5">{quotes.length} active</p>
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+          {quotes.map((q: any) => (
+            <button
+              key={q.id}
+              onClick={() => handleSelectQuote(q)}
+              className={`w-full text-left px-4 py-3 transition-all ${selectedQuote?.id === q.id ? 'bg-blue-50 border-l-2 border-blue-600' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${selectedQuote?.id === q.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                  {(q.vendor_name || 'V').substring(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-900 truncate">{q.vendor_name}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{q.email_subject || q.sender_email}</p>
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('voice')}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'voice'
-            ? 'text-gray-900'
-            : 'text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          <div className="flex items-center gap-2">
-            <Phone className="w-4 h-4" />
-            <span>Voice Calls</span>
-          </div>
-          {activeTab === 'voice' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('email')}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'email'
-            ? 'text-gray-900'
-            : 'text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4" />
-            <span>Email Threads</span>
-          </div>
-          {activeTab === 'email' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
-          )}
-        </button>
-      </div>
+      {/* Right Pane */}
+      <div className="col-span-9 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
+        {selectedQuote ? (
+          <>
+            {/* Compact Header */}
+            <div className="px-5 py-3 border-b border-gray-100 bg-white flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-bold text-gray-900">{selectedQuote.vendor_name}</h3>
+                <span className="text-[10px] text-gray-400">{selectedQuote.sender_email}</span>
+              </div>
+              <Badge className="bg-orange-100 text-orange-800 border-orange-200 px-2 py-0.5 text-[9px] uppercase font-bold tracking-wider">
+                Negotiating
+              </Badge>
+            </div>
 
-      {/* Voice Calls Tab */}
-      {activeTab === 'voice' && (
-        <div className="grid grid-cols-12 gap-4">
-          {/* Calls List */}
-          <div className="col-span-4 space-y-3">
-            {voiceCalls.map((call) => (
+            {/* Collapsible AI Insights */}
+            <div className="border-b border-gray-100 flex-shrink-0">
               <button
-                key={call.id}
-                onClick={() => setSelectedVoiceCall(call)}
-                className={`w-full text-left p-4 rounded-lg transition-all border ${selectedVoiceCall.id === call.id
-                  ? 'bg-white border-[#3B82F6] shadow-sm'
-                  : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
+                onClick={() => setInsightsOpen(!insightsOpen)}
+                className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <p className="text-sm font-semibold text-gray-900">{call.vendor}</p>
-                </div>
-                <p className="text-xs text-gray-500 mb-2">{call.callDate}</p>
                 <div className="flex items-center gap-2">
-                  <Badge className={`text-xs px-2 py-0.5 border-0 ${call.status === 'active'
-                    ? 'bg-orange-50 text-orange-700'
-                    : 'bg-gray-100 text-gray-700'
-                    }`}>
-                    {call.outcome}
-                  </Badge>
-                  <span className="text-xs text-gray-500">{call.duration}</span>
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="text-[10px] font-black text-gray-900 uppercase tracking-[0.15em]">AI Negotiation Insights</span>
+                  {isInsightsLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
                 </div>
+                {insightsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
               </button>
-            ))}
-          </div>
 
-          {/* Call Details */}
-          <div className="col-span-8 border border-gray-200 rounded-lg bg-white">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-2">{selectedVoiceCall.vendor}</h3>
-                  <div className="flex items-center gap-4 text-xs text-gray-500">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {selectedVoiceCall.callDate}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      {selectedVoiceCall.duration}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      Ram Krish, AI Agent, Sandeep Kumar
-                    </span>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" className="h-8 px-3 text-xs border-gray-200 hover:bg-gray-50">
-                  Download
-                </Button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-4 space-y-4">
-              {/* Key Points */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 mb-3">Key Points</h4>
-                <div className="space-y-2">
-                  {selectedVoiceCall.keyPoints.map((point, idx) => (
-                    <div key={idx} className="flex items-start gap-2 bg-gray-100 p-3 rounded-lg">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] mt-1.5 flex-shrink-0" />
-                      <p className="text-sm text-gray-700">{point}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Transcript */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 mb-3">Transcript</h4>
-                <div className="space-y-3 max-h-80 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {selectedVoiceCall.transcript.map((entry, idx) => (
-                    <div key={idx} className="pb-3 border-b border-gray-100 last:border-0">
-                      <div className="flex items-baseline justify-between mb-1">
-                        <p className="text-sm font-semibold text-gray-900">{entry.speaker}</p>
-                        <p className="text-xs text-gray-400">{entry.time}</p>
-                      </div>
-                      <p className="text-sm text-gray-600 leading-relaxed">{entry.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Email Threads Tab */}
-      {activeTab === 'email' && (
-        <>
-          {/* Gmail-style Email List */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-            {emailThreads.length > 0 ? (
-              <div className="divide-y divide-gray-100">
-                {emailThreads.map((thread) => (
-                  <button
-                    key={thread.id}
-                    onClick={() => {
-                      setSelectedEmailThread(thread);
-                      setEmailThreadOpen(true);
-                    }}
-                    className="w-full px-4 py-3 flex items-center gap-4 hover:bg-gray-50 transition-colors group text-left"
-                  >
-                    {/* Status Indicator */}
-                    <div className="flex-shrink-0">
-                      {thread.status === 'active' ? (
-                        <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                      ) : (
-                        <div className="w-2 h-2"></div>
-                      )}
-                    </div>
-
-                    {/* Avatar */}
-                    <div className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                        <span className="text-sm font-medium text-gray-700">
-                          {thread.vendor.substring(0, 2).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Email Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className={`text-sm ${thread.status === 'active' ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
-                          {thread.vendor}
-                        </span>
-                        {thread.priority === 'high' && (
-                          <Badge className="text-xs px-1.5 py-0 border-0 bg-red-50 text-red-700">
-                            High Priority
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm ${thread.status === 'active' ? 'font-medium text-gray-900' : 'text-gray-600'}`}>
-                          {thread.subject}
-                        </span>
-                        <span className="text-sm text-gray-500">-</span>
-                        <span className="text-sm text-gray-500 truncate">
-                          {thread.messages[thread.messages.length - 1].message.substring(0, 60)}...
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Timestamp */}
-                    <div className="flex-shrink-0 text-xs text-gray-500">
-                      {thread.lastMessage.split(' ').slice(0, 2).join(' ')}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-sm text-gray-500">No email threads found</p>
-              </div>
-            )}
-          </div>
-
-          {/* Gmail-style Email Thread Side Panel */}
-          {emailThreadOpen && selectedEmailThread && createPortal(
-            <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
-              {/* Overlay */}
-              <div
-                className="absolute inset-0 bg-black/50"
-                onClick={() => setEmailThreadOpen(false)}
-              />
-
-              {/* Side Panel */}
-              <div className="absolute top-0 right-0 h-full w-[700px] bg-white shadow-lg flex flex-col" style={{ zIndex: 1 }}>
-                {/* Header */}
-                <div className="bg-white border-b border-[#eeeff1] px-6 py-4 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900">{selectedEmailThread.subject}</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">{selectedEmailThread.email}</p>
-                  </div>
-                  <button
-                    onClick={() => setEmailThreadOpen(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Email Thread Messages */}
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  {selectedEmailThread.messages.map((message: any, index: number) => (
-                    <div key={message.id} className={`mb-6 ${index === selectedEmailThread.messages.length - 1 ? 'mb-0' : ''}`}>
-                      {/* Message Header */}
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${message.type === 'sent' ? 'bg-[#3B82F6]' : 'bg-gray-300'
-                          }`}>
-                          <span className={`text-sm font-medium ${message.type === 'sent' ? 'text-white' : 'text-gray-700'}`}>
-                            {message.fromName.substring(0, 2).toUpperCase()}
-                          </span>
+              {insightsOpen && (
+                <div className="px-5 pb-4">
+                  {insights ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Price */}
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 rounded-lg p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <IndianRupee className="w-3 h-3 text-green-600" />
+                          <span className="text-[9px] font-bold text-green-800 uppercase tracking-wider">Price</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-semibold text-gray-900">{message.type === 'sent' ? 'Ram Krish' : message.fromName}</span>
-                            <span className="text-xs text-gray-500">{message.timestamp}</span>
+                        <p className="text-sm font-bold text-gray-900">{insights.price}</p>
+                      </div>
+                      {/* Delivery */}
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100/60 rounded-lg p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          <span className="text-[9px] font-bold text-blue-800 uppercase tracking-wider">Delivery</span>
+                        </div>
+                        <p className="text-sm font-bold text-gray-900">{insights.delivery_timeline}</p>
+                      </div>
+                      {/* Sentiment */}
+                      <div className={`rounded-lg p-3 ring-1 ${sentimentConfig[insights.sentiment]?.bg || sentimentConfig.neutral.bg}`}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <TrendingUp className="w-3 h-3 text-gray-600" />
+                          <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Vendor Sentiment</span>
+                        </div>
+                        <p className={`text-sm font-bold ${sentimentConfig[insights.sentiment]?.color || 'text-gray-900'}`}>
+                          {sentimentConfig[insights.sentiment]?.label || insights.sentiment}
+                        </p>
+                      </div>
+                      {/* Latest Change */}
+                      <div className="bg-gradient-to-br from-amber-50 to-yellow-50/50 border border-amber-100/60 rounded-lg p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <MessageSquare className="w-3 h-3 text-amber-600" />
+                          <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider">Latest Update</span>
+                        </div>
+                        <p className="text-xs text-gray-700 leading-relaxed">{insights.latest_change}</p>
+                      </div>
+                      {/* Key Terms */}
+                      {insights.key_terms?.length > 0 && (
+                        <div className="col-span-2 bg-gray-50/80 border border-gray-100 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Shield className="w-3 h-3 text-gray-600" />
+                            <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Key Terms</span>
                           </div>
-                          <p className="text-xs text-gray-500">to {message.to}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {insights.key_terms.map((term: string, i: number) => (
+                              <span key={i} className="px-2 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-medium text-gray-700">
+                                {term}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Message Content */}
-                      <div className="ml-13">
-                        <div className="text-sm text-gray-900 leading-relaxed">
-                          {message.message}
-                        </div>
+                      )}
+                      {/* Summary */}
+                      <div className="col-span-2 bg-blue-50/50 border border-blue-100/50 rounded-lg p-3">
+                        <p className="text-xs text-gray-700 leading-relaxed italic">&ldquo;{insights.summary}&rdquo;</p>
                       </div>
                     </div>
-                  ))}
+                  ) : isInsightsLoading ? (
+                    <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-xs">Analyzing negotiation thread...</span>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-xs text-gray-400">Select a vendor with an active thread to see AI insights.</p>
+                    </div>
+                  )}
                 </div>
+              )}
+            </div>
 
-                {/* Reply Section */}
-                {selectedEmailThread.status === 'active' && (
-                  <div className="border-t border-[#eeeff1] bg-white">
-                    <div className="px-6 py-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-[#3B82F6] flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-medium text-white">RK</span>
+            {/* Email Thread Area — Scrollable */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 bg-gray-50/20">
+              {isThreadLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+                  <span className="text-xs">Loading conversation...</span>
+                </div>
+              ) : threadMessages.length > 0 ? (
+                <div className="space-y-5 max-w-3xl mx-auto">
+                  {[...threadMessages].reverse().map((msg: any, idx: number) => {
+                    const fromAddr = (msg.from ?? [])[0] ?? {};
+                    const isVendor = fromAddr.email === selectedQuote.sender_email;
+                    const initials = (fromAddr.name || fromAddr.email || '??').substring(0, 2).toUpperCase();
+                    const dateStr = new Date(msg.date * 1000).toLocaleDateString('en-GB', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                    });
+
+                    return (
+                      <div key={msg.id} className="flex gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold shadow-sm ${isVendor ? 'bg-white border border-gray-200 text-gray-600' : 'bg-blue-600 text-white'}`}>
+                          {initials}
                         </div>
-                        <div className="flex-1">
-                          <p className="text-xs text-gray-500 mb-2">Reply to {selectedEmailThread.vendor}</p>
+                        <div className={`flex-1 min-w-0 border rounded-xl p-4 shadow-sm ${isVendor ? 'bg-white border-gray-100' : 'bg-blue-50/40 border-blue-100'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-900">{fromAddr.name || fromAddr.email}</span>
+                              {isVendor && <span className="text-[9px] text-gray-400 font-bold uppercase px-1 py-0.5 bg-gray-50 rounded">Vendor</span>}
+                            </div>
+                            <span className="text-[10px] text-gray-400">{dateStr}</span>
+                          </div>
+                          {msg.subject && (
+                            <h4 className="text-xs font-semibold text-gray-800 mb-2">{msg.subject}</h4>
+                          )}
+                          <div
+                            className="text-sm text-gray-700 leading-relaxed email-body-content overflow-auto max-h-[300px]"
+                            dangerouslySetInnerHTML={{ __html: msg.body || '<em>No content</em>' }}
+                          />
+                          {/* Attachments with download */}
+                          {msg.attachments?.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5">
+                              {msg.attachments.map((att: any) => (
+                                <button
+                                  key={att.id}
+                                  onClick={() => handleDownloadAttachment(att, msg.id)}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors group/att text-left"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-gray-400 group-hover/att:text-blue-500 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-medium text-gray-700 truncate">{att.filename}</p>
+                                    {att.size && <p className="text-[9px] text-gray-400">{att.size > 1024 * 1024 ? `${(att.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(att.size / 1024)} KB`}</p>}
+                                  </div>
+                                  <Download className="w-3 h-3 text-gray-300 opacity-0 group-hover/att:opacity-100 transition-opacity" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="ml-13">
-                        <textarea
-                          placeholder="Type your reply..."
-                          className="w-full min-h-[120px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:border-transparent resize-none"
-                        />
-                        <div className="flex items-center justify-end gap-2 mt-3">
-                          <Button
-                            variant="outline"
-                            onClick={() => setEmailThreadOpen(false)}
-                            className="text-sm"
-                          >
-                            Close
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              toast.success(`Reply sent to ${selectedEmailThread.vendor}`);
-                              setEmailThreadOpen(false);
-                            }}
-                            className="bg-[#3B82F6] text-white hover:bg-[#2563EB] text-sm"
-                          >
-                            <Send className="w-4 h-4 mr-2" />
-                            Send
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    );
+                  })}
+                  <div ref={threadEndRef} />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center opacity-50">
+                  <Mail className="w-8 h-8 text-gray-300 mb-3" />
+                  <h4 className="text-sm font-semibold text-gray-900 mb-1">No messages yet</h4>
+                  <p className="text-xs text-gray-500 max-w-[200px]">Send a negotiation message to start the thread.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Reply Area — Fixed Bottom */}
+            <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+              <div className="max-w-3xl mx-auto">
+                <textarea
+                  placeholder={`Reply to ${selectedQuote.vendor_name}…`}
+                  value={replyText}
+                  onChange={(e: any) => setReplyText(e.target.value)}
+                  disabled={isSending || !selectedQuote.thread_id}
+                  className="w-full h-24 p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none placeholder:text-gray-400 disabled:bg-gray-50"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-[9px] text-gray-400 italic">Insights update automatically after each reply.</p>
+                  <Button
+                    onClick={handleSendReply}
+                    disabled={isSending || !replyText.trim() || !selectedQuote.thread_id}
+                    className="bg-blue-600 text-white hover:bg-blue-700 px-5 h-9 text-xs shadow-sm"
+                  >
+                    {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+                    {isSending ? 'Sending…' : 'Send'}
+                  </Button>
+                </div>
               </div>
-            </div>,
-            document.body
-          )}
-        </>
-      )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30">
+            <Users className="w-10 h-10 text-gray-200 mb-3" />
+            <h4 className="text-sm font-semibold text-gray-900 mb-1">Select a Vendor</h4>
+            <p className="text-xs text-gray-500 max-w-[220px] text-center">Choose a vendor from the list to view negotiation details and communicate.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

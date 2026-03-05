@@ -1,3 +1,4 @@
+import asyncio
 import boto3
 import csv
 import io
@@ -26,10 +27,12 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
     """
     try:
         textract = get_textract_client()
-        response = textract.detect_document_text(Document={"Bytes": document_bytes})
+        textract_response = await asyncio.to_thread(
+            textract.detect_document_text, Document={"Bytes": document_bytes}
+        )
 
         extracted_text = " ".join(
-            [item["Text"] for item in response["Blocks"] if item["BlockType"] == "LINE"]
+            [item["Text"] for item in textract_response["Blocks"] if item["BlockType"] == "LINE"]
         )
 
         # Pass the extracted text to Bedrock for semantic validation
@@ -53,17 +56,16 @@ async def verify_vendor_certification(document_bytes: bytes, cert_type: str) -> 
             }
         )
 
-        br_response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
-        content = (
-            json.loads(br_response.get("body").read())
-            .get("content", [])[0]
-            .get("text", "{}")
-        )
+        def _invoke_br():
+            r = bedrock.invoke_model(
+                modelId=settings.BEDROCK_MODEL_ID,
+                body=body,
+                contentType="application/json",
+                accept="application/json",
+            )
+            return json.loads(r.get("body").read()).get("content", [])[0].get("text", "{}")
+
+        content = await asyncio.to_thread(_invoke_br)
         return json.loads(content)
 
     except Exception as e:
@@ -257,7 +259,7 @@ async def bulk_create_vendors(db: Session, csv_bytes: bytes) -> dict:
                     f"DEBUG: Appended {len(certificate_details)} certificates to details for vendor '{vendor.name}'."
                 )
                 # Index into vector db
-                index_vendor_to_opensearch(vendor, certificate_details)
+                await asyncio.to_thread(index_vendor_to_opensearch, vendor, certificate_details)
         except Exception as exc:
             failed += 1
             errors.append({"row": i, "error": str(exc)})

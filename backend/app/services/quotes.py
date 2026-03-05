@@ -1,11 +1,11 @@
+import asyncio
 import json
-import io
 import re
 from datetime import datetime
-from pypdf import PdfReader
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.services.rfp import get_bedrock_client, get_llm
+from langchain_core.messages import SystemMessage, HumanMessage
 from app.schemas.domain import AIRecommendationsResponse
 from app.models.domain import Project, Quote, ProjectInvitedVendor
 from app.services.email import (
@@ -55,14 +55,17 @@ async def score_quotes(quotes: list) -> list:
     )
 
     try:
-        response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
 
-        response_body = json.loads(response.get("body").read())
+        def _invoke():
+            r = bedrock.invoke_model(
+                modelId=settings.BEDROCK_MODEL_ID,
+                body=body,
+                contentType="application/json",
+                accept="application/json",
+            )
+            return json.loads(r.get("body").read())
+
+        response_body = await asyncio.to_thread(_invoke)
         content = response_body.get("content", [])[0].get("text", "[]")
 
         return json.loads(content)
@@ -100,14 +103,17 @@ async def generate_negotiation_email(
     )
 
     try:
-        response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
 
-        response_body = json.loads(response.get("body").read())
+        def _invoke():
+            r = bedrock.invoke_model(
+                modelId=settings.BEDROCK_MODEL_ID,
+                body=body,
+                contentType="application/json",
+                accept="application/json",
+            )
+            return json.loads(r.get("body").read())
+
+        response_body = await asyncio.to_thread(_invoke)
         return response_body.get("content", [])[0].get("text", "")
     except Exception as e:
         print(f"Error generating email: {e}")
@@ -150,8 +156,8 @@ async def generate_ai_recommendations(
                 # Collect and clean text body
                 body = msg.get("body", "")
                 body = clean_html(body)
-                if len(body) > 10000:
-                    body = body[:10000] + "... [truncated]"
+                if len(body) > 5000:
+                    body = body[:5000] + "... [truncated]"
 
                 from_addr = msg.get("from_")
                 t_texts.append(f"From {from_addr}: {body}")
@@ -218,8 +224,8 @@ async def generate_ai_recommendations(
                                 )
 
                         if att_text.strip():
-                            if len(att_text) > 15000:
-                                att_text = att_text[:15000] + "... [truncated]"
+                            if len(att_text) > 8000:
+                                att_text = att_text[:8000] + "... [truncated]"
                             t_texts.append(f"ATTACHMENT ({filename}):\n{att_text}")
                             print(
                                 f"[AI Rec] Added attachment content for {filename} to thread text",
@@ -252,6 +258,7 @@ async def generate_ai_recommendations(
         vendor_data_map[email] = {
             "vendor_name": v_name,
             "vendor_email": email,
+            "thread_id": thread_id,
             "price": q.price,
             "currency": q.currency,
             "delivery_timeline": sla.get("delivery_timeline"),
@@ -286,6 +293,7 @@ async def generate_ai_recommendations(
                 vendor_data_map[email] = {
                     "vendor_name": v_name,
                     "vendor_email": email,
+                    "thread_id": tid,
                     "price": None,
                     "currency": None,
                     "delivery_timeline": None,
@@ -352,44 +360,65 @@ async def generate_ai_recommendations(
     llm = get_llm(settings.BEDROCK_NOVA_MODEL_ID)
     structured_llm = llm.with_structured_output(AIRecommendationsResponse)
 
-    prompt = f"""
-    You are an expert AI Procurement Officer. Review the following vendor quotes, email threads, and attachments for the project "{project.project_name}".
+    system_prompt = f"""
+    You are an expert AI Procurement Officer for the project "{project.project_name}".
     
-    STRICT REQUIREMENT: Generate scores and recommendations ONLY based on the provided supplier responses and quotes. 
-    Ignore any prior knowledge or information not present in the "Vendor Submissions" section below.
-
-    RFP Details (for context only):
-    {json.dumps(project.rfp_data or {}, default=str)}
+    BASE REQUIREMENTS:
+    - Evidence: Use "Vendor Submissions".
+    - Baseline: Use "RFP Details" (Budget: {project.rfp_data.get("budget", "N/A")}, Timeline: {project.rfp_data.get("deliveryTimeline", "N/A")}).
     
-    Vendor Submissions (PRIMARY SOURCE):
-    {json.dumps(vendor_payloads, default=str)}
+    STRICT SCORING RUBRIC (0-100) - NO EXCEPTIONS:
+    1. **Price Competitiveness**: 100 for lowest, 90-100 for under budget. Over budget: 85 - 1pt per 2% over.
+    2. **Delivery Timeline**: 
+       - 100 if and only if (Bulk/Production timeline) <= RFP Baseline.
+       - If Bulk timeline NOT found, use Trial timeline but note it's non-standard.
+       - PENALTY: YOU MUST DEDUCT 10 points for every WEEK of delay. 
+       - If RFP is "2 weeks" and Vendor is "30-45 days" (6 weeks), the delay is 4 weeks. Score MUST be ~60. 
+       - NEVER award 100 for a delivery that exceeds the baseline.
+    3. **Quality/Warranty/Compliance**: 100 (full evidence), 50 (partial), 0 (none/missing).
     
-    Evaluate each vendor on the following criteria out of 100:
-    - Price Competitiveness
-    - Delivery Timeline
-    - Quality Standards
-    - Warranty Terms
-    - Compliance & Certifications
-    
-    CRITICAL INSTRUCTIONS for 'citations' and 'recommendation_reason':
-    - SOURCE TRUTH: Every score and reasoning MUST be directly traceable to the "Vendor Submissions".
-    - NO HTML: Ensure they do NOT contain any HTML tags or raw email headers.
-    - GRANULAR CITATIONS: You MUST provide a 'citations' object.
-    - KEYS: Use EXACTLY these keys: "price_score", "delivery_score", "quality_score", "warranty_score", "compliance_score".
-    - EXACT QUOTES: Each citation MUST be an EXACT, short quote (10-20 words max) from the vendor's email communications or attachments that justifies that specific score.
-    - EXAMPLES of 'citations' entries:
-        - "price_score": "Total cost for the lot is INR 1,20,000 inclusive of taxes."
-        - "delivery_score": "We provide a standard delivery lead time of 45 days."
-        - "quality_score": "All items are certified under ISO 9001:2015 standards."
-    - UNIQUE EVIDENCE: Find the most relevant piece of evidence for each specific metric.
-    - NO REPETITION: Do not use the same citation across different metrics.
-    - For the 'citation' field (deprecated), providing a short overall summary quote.
+    CRITICAL INSTRUCTIONS:
+    - MULTI-VENDOR: You MUST return exactly ONE recommendation object for EVERY vendor provided in the Evidence.
+    - REASONING: Your reasoning MUST justify the score. Mention exact delays in weeks if applicable.
+    - CITATIONS OBJECT: You MUST provide a 'citations' dictionary with EXACTLY these keys: "price_score", "delivery_score", "quality_score", "warranty_score", "compliance_score".
+    - CITATION VALUES: Each must be an EXACT, short quote (10-20 words max) justifying that score.
+    - DEPRECATED FIELD: Set the 'citation' field (string) to a short overall summary quote.
     """
 
-    print("[AI Rec] Invoking AI Model", flush=True)
+    human_content = f"""
+    RFP Details (BASELINE): {json.dumps(project.rfp_data or {}, default=str)}
+    
+    Vendor Submissions (EVIDENCE): {json.dumps(vendor_payloads, default=str)}
+    
+    Generate recommendations for ALL vendors following the schema precisely.
+    """
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_content),
+    ]
+
+    print(
+        f"[AI Rec] Invoking AI Model with {len(messages)} messages. Human content length: {len(human_content)}",
+        flush=True,
+    )
     try:
-        response: AIRecommendationsResponse = structured_llm.invoke(prompt)
+        response = await asyncio.to_thread(structured_llm.invoke, messages)
+        if response is None:
+            print(
+                "[AI Rec] AI Model returned None. Retrying with simplified prompt...",
+                flush=True,
+            )
+            # Simple fallback or retry logic could go here, but let's try to fix the root cause.
+            return {"recommendations": []}
+
         res_dict = response.model_dump()
+
+        # Map thread_id back from vendor_data_map (since LLM might not preserve it or we didn't ask it to)
+        for rec in res_dict.get("recommendations", []):
+            v_email = rec.get("vendor_email")
+            if v_email in vendor_data_map:
+                rec["thread_id"] = vendor_data_map[v_email].get("thread_id")
 
         # Add metadata to the response for caching
         res_dict["metadata"] = {
@@ -421,3 +450,109 @@ async def generate_ai_recommendations(
         print(f"Error generating AI recommendations: {e}")
         # Return empty list format on failure
         return {"recommendations": []}
+
+
+async def generate_negotiation_insights(
+    thread_id: str, vendor_name: str, vendor_email: str, project_id: str = ""
+) -> dict:
+    """
+    Analyze a negotiation email thread and extract structured insights:
+    price, delivery timeline, key terms, vendor sentiment, and summary.
+    """
+    from app.services.email import list_thread_messages
+
+    # 1. Fetch thread messages (with cross-grant search)
+    try:
+        messages = list_thread_messages(
+            thread_id, project_id=project_id, vendor_email=vendor_email
+        )
+    except Exception as e:
+        print(f"[Neg Insights] Thread fetch error for {thread_id}: {e}")
+        return _default_insights(vendor_name)
+
+    if not messages:
+        return _default_insights(vendor_name)
+
+    # 2. Build a condensed conversation transcript
+    transcript_parts = []
+    for msg in messages:
+        from_list = msg.get("from") or [{}]
+        from_name = (
+            from_list[0].get("name") or from_list[0].get("email") or "Unknown"
+            if isinstance(from_list, list) and from_list
+            else "Unknown"
+        )
+        body = clean_html(msg.get("body", ""))
+        if len(body) > 3000:
+            body = body[:3000] + "... [truncated]"
+        transcript_parts.append(f"From: {from_name}\n{body}")
+
+    transcript = "\n---\n".join(transcript_parts)
+
+    # 3. Prompt the LLM
+    llm = get_llm(settings.BEDROCK_NOVA_MODEL_ID)
+
+    prompt = f"""You are an expert procurement analyst. Analyze the following negotiation email thread between our company and vendor "{vendor_name}" ({vendor_email}).
+
+EMAIL THREAD:
+{transcript}
+
+Extract the following information from the LATEST state of the negotiation. Return ONLY valid JSON with these exact keys:
+
+{{
+  "price": "<latest quoted price as a string, e.g. '₹1,20,000' or 'Not quoted yet'>",
+  "delivery_timeline": "<latest delivery timeline, e.g. '30-45 days' or 'Not specified'>",
+  "key_terms": ["<term 1>", "<term 2>", "<term 3>"],
+  "sentiment": "<one of: cooperative, neutral, resistant, aggressive>",
+  "summary": "<1-2 sentence summary of current negotiation status>",
+  "latest_change": "<what changed in the most recent message, or 'Initial contact' if only one message>"
+}}
+
+RULES:
+- Extract from the ACTUAL email content, not from assumptions.
+- key_terms should include payment terms, warranty, MOQ, certifications, etc. if mentioned. Max 5 terms.
+- sentiment reflects the VENDOR's tone toward the negotiation.
+- If information is not available, say "Not specified" or "Not available".
+- Return ONLY the JSON object, no markdown formatting."""
+
+    try:
+        response = await asyncio.to_thread(llm.invoke, prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+
+        # Parse JSON from response
+        # Strip markdown code fences if present
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        result = json.loads(content)
+        return {
+            "price": result.get("price", "Not specified"),
+            "delivery_timeline": result.get("delivery_timeline", "Not specified"),
+            "key_terms": result.get("key_terms", []),
+            "sentiment": result.get("sentiment", "neutral"),
+            "summary": result.get("summary", "Negotiation in progress."),
+            "latest_change": result.get("latest_change", "No changes detected"),
+            "message_count": len(messages),
+        }
+    except Exception as e:
+        print(f"[Neg Insights] LLM error: {e}")
+        return _default_insights(vendor_name, len(messages))
+
+
+def _default_insights(vendor_name: str, message_count: int = 0) -> dict:
+    """Return a default insights object when LLM analysis is unavailable."""
+    return {
+        "price": "Not specified",
+        "delivery_timeline": "Not specified",
+        "key_terms": [],
+        "sentiment": "neutral",
+        "summary": f"Negotiation with {vendor_name} has been initiated."
+        if message_count == 0
+        else f"Conversation with {vendor_name} has {message_count} messages. Awaiting analysis.",
+        "latest_change": "Initial contact",
+        "message_count": message_count,
+    }

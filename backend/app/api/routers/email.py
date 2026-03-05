@@ -163,10 +163,18 @@ async def reply_to_thread(request: ReplyEmailRequest):
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadMessagesResponse)
-async def get_thread_messages(thread_id: str):
+async def get_thread_messages(
+    thread_id: str,
+    project_id: str = Query("", description="RFP project ID for cross-grant search"),
+    vendor_email: str = Query("", description="Vendor email for filtering"),
+):
     """Fetch all messages in an email thread (e.g., an RFP + its replies)."""
     try:
-        messages = list_thread_messages(thread_id)
+        messages = list_thread_messages(
+            thread_id,
+            project_id=project_id,
+            vendor_email=vendor_email,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
