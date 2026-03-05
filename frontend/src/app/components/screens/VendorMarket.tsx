@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Shield, MapPin, Award, Star, X, ExternalLink, TrendingUp, Tag, Clock, Sparkles, Mail, Phone, CalendarDays, Globe } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -330,13 +331,34 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
             <h2 className="text-xl font-semibold text-gray-900">{submittedQuery}</h2>
           </div>
           <div className="max-w-[1400px] mx-auto mb-6">
-            {isInternalLoading && isExternalLoading ? (
-              <p className="text-sm text-gray-400">Searching…</p>
-            ) : (
-              <p className="text-sm text-gray-600">
-                {internalResults.length + externalResults.length} vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''}
-              </p>
-            )}
+            <AnimatePresence mode="wait">
+              {isInternalLoading || isExternalLoading ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="flex items-center gap-2"
+                >
+                  <div className="flex gap-1">
+                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce"></span>
+                  </div>
+                  <p className="text-sm font-medium text-blue-600">
+                    {isInternalLoading ? 'Searching internal database...' : 'External search in progress...'}
+                    {internalResults.length > 0 && <span className="text-gray-400 ml-2">({internalResults.length} internal results found)</span>}
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-sm text-gray-600"
+                >
+                  <span className="font-semibold text-gray-900">{internalResults.length + externalResults.length}</span> vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''} found
+                </motion.p>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Results grid */}
@@ -353,88 +375,104 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                 {isInternalLoading ? (
                   <div className="grid grid-cols-2 gap-4">
                     {[1, 2, 3, 4].map(i => (
-                      <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: i * 0.1 }}
+                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
                         <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
                         <div className="h-3 bg-gray-100 rounded w-full mb-2" />
                         <div className="h-3 bg-gray-100 rounded w-1/2" />
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 ) : internalResults.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4">
-                    {internalResults.map((result) => {
-                      const trustScore = Math.round(result.final_score * 100);
-                      const productsStr = result.products.join(', ');
-                      const detail = toDetailVendor(result);
-                      return (
-                        <Card
-                          key={result.vendor_id}
-                          className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
-                          onClick={() => {
-                            setSelectedVendor(detail);
-                            onVendorSelect(detail);
-                          }}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                                  {result.vendor_name}
-                                </h3>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
-                                <div className="flex items-center gap-1">
-                                  <TrendingUp className="w-3.5 h-3.5 text-green-600" />
-                                  <span className="text-sm font-bold text-green-600">{trustScore}%</span>
-                                </div>
-                                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-green-100 text-green-700">
-                                  <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
-                                  Verified
-                                </Badge>
-                              </div>
-                            </div>
-
-                            <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
-
-                            {result.certificates.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mb-3">
-                                {result.certificates.map((cert, idx) => (
-                                  <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0 leading-none font-medium">
-                                    {cert}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex items-center gap-2">
-                              {result.location && (
-                                <div className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-gray-400" />
-                                  <span className="text-xs text-gray-600">{result.location}</span>
-                                </div>
-                              )}
-                              {result.certificates.length > 0 && (
-                                <>
-                                  <span className="text-gray-300">•</span>
-                                  <div className="flex items-center gap-1">
-                                    <Award className="w-3 h-3 text-gray-400" />
-                                    <span className="text-xs text-gray-600">{result.certificates.length} certs</span>
+                    <AnimatePresence mode="popLayout">
+                      {internalResults.map((result, idx) => {
+                        const trustScore = Math.round(result.final_score * 100);
+                        const productsStr = result.products.join(', ');
+                        const detail = toDetailVendor(result);
+                        return (
+                          <motion.div
+                            key={result.vendor_id}
+                            layout
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: idx * 0.05 }}
+                          >
+                            <Card
+                              className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1] h-full"
+                              onClick={() => {
+                                setSelectedVendor(detail);
+                                onVendorSelect(detail);
+                              }}
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                      {result.vendor_name}
+                                    </h3>
                                   </div>
-                                </>
-                              )}
-                              {result.estd && (
-                                <>
-                                  <span className="text-gray-300">•</span>
-                                  <span className="text-xs text-gray-600">
-                                    {new Date().getFullYear() - result.estd}y
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                                  <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
+                                    <div className="flex items-center gap-1">
+                                      <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                                      <span className="text-sm font-bold text-green-600">{trustScore}%</span>
+                                    </div>
+                                    <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-green-100 text-green-700">
+                                      <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
+                                      Verified
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+
+                                {result.certificates.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mb-3">
+                                    {result.certificates.map((cert, idx) => (
+                                      <Badge key={idx} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-0 leading-none font-medium">
+                                        {cert}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  {result.location && (
+                                    <div className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-gray-400" />
+                                      <span className="text-xs text-gray-600">{result.location}</span>
+                                    </div>
+                                  )}
+                                  {result.certificates.length > 0 && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <div className="flex items-center gap-1">
+                                        <Award className="w-3 h-3 text-gray-400" />
+                                        <span className="text-xs text-gray-600">{result.certificates.length} certs</span>
+                                      </div>
+                                    </>
+                                  )}
+                                  {result.estd && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <span className="text-xs text-gray-600">
+                                        {new Date().getFullYear() - result.estd}y
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
                   </div>
                 ) : (
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
@@ -462,97 +500,112 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                 {isExternalLoading ? (
                   <div className="grid grid-cols-2 gap-4">
                     {[1, 2].map(i => (
-                      <div key={`ext-loading-${i}`} className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
+                      <motion.div
+                        key={`ext-loading-${i}`}
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: i * 0.1 }}
+                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
                         <div className="flex items-start justify-between mb-3">
-                          <div className="h-5 bg-gray-100 rounded-md w-1/2 animate-pulse" />
-                          <div className="h-4 bg-gray-50 rounded-full w-14 animate-pulse" />
+                          <div className="h-5 bg-gray-100 rounded-md w-1/2" />
+                          <div className="h-4 bg-gray-50 rounded-full w-14" />
                         </div>
                         <div className="space-y-2 mb-4">
-                          <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
-                          <div className="h-3 bg-gray-100 rounded w-[85%] animate-pulse" />
+                          <div className="h-3 bg-gray-100 rounded w-full" />
+                          <div className="h-3 bg-gray-100 rounded w-[85%]" />
                         </div>
                         <div className="flex items-center justify-between">
-                          <div className="h-3 bg-gray-100 rounded w-24 animate-pulse" />
-                          <div className="h-3 bg-blue-50/50 rounded w-20 animate-pulse" />
+                          <div className="h-3 bg-gray-100 rounded w-24" />
+                          <div className="h-3 bg-blue-50/50 rounded w-20" />
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 ) : externalResults.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4">
-                    {externalResults.map((result) => {
-                      const productsStr = result.products.join(', ');
-                      const detail = toDetailVendor(result);
-                      return (
-                        <Card
-                          key={result.vendor_id}
-                          className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1]"
-                          onClick={() => {
-                            setSelectedVendor(detail);
-                            onVendorSelect(detail);
-                          }}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                                  {result.vendor_name}
-                                </h3>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
-                                <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
-                                  <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
-                                  External
-                                </Badge>
-                              </div>
-                            </div>
-
-                            {productsStr && (
-                              <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
-                            )}
-
-                            {result.description && (
-                              <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
-                                {result.description}
-                              </p>
-                            )}
-
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                {result.location && (
-                                  <div className="flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-gray-400" />
-                                    <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
+                    <AnimatePresence mode="popLayout">
+                      {externalResults.map((result, idx) => {
+                        const productsStr = result.products.join(', ');
+                        const detail = toDetailVendor(result);
+                        return (
+                          <motion.div
+                            key={result.vendor_id}
+                            layout
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: idx * 0.05 }}
+                          >
+                            <Card
+                              className="bg-white hover:bg-gray-50 transition-all cursor-pointer group border border-[#eeeff1] h-full"
+                              onClick={() => {
+                                setSelectedVendor(detail);
+                                onVendorSelect(detail);
+                              }}
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                      {result.vendor_name}
+                                    </h3>
                                   </div>
-                                )}
-                                {result.estd && (
-                                  <>
-                                    {result.location && <span className="text-gray-300">•</span>}
-                                    <span className="text-xs text-gray-600">
-                                      {new Date().getFullYear() - result.estd}y
-                                    </span>
-                                  </>
-                                )}
-                              </div>
+                                  <div className="flex flex-col items-end gap-1 ml-3 flex-shrink-0">
+                                    <Badge className="text-[10px] px-1.5 py-0.5 border-0 leading-none bg-blue-50 text-blue-600">
+                                      <Globe className="w-2.5 h-2.5 mr-0.5 inline" />
+                                      External
+                                    </Badge>
+                                  </div>
+                                </div>
 
-                              {result.website && (
-                                <a
-                                  href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Visit site
-                                </a>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                                {productsStr && (
+                                  <p className="text-xs text-gray-600 mb-2 line-clamp-1">{productsStr}</p>
+                                )}
+
+                                {result.description && (
+                                  <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
+                                    {result.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    {result.location && (
+                                      <div className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3 text-gray-400" />
+                                        <span className="text-xs text-gray-600 truncate max-w-[120px]">{result.location}</span>
+                                      </div>
+                                    )}
+                                    {result.estd && (
+                                      <>
+                                        {result.location && <span className="text-gray-300">•</span>}
+                                        <span className="text-xs text-gray-600">
+                                          {new Date().getFullYear() - result.estd}y
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {result.website && (
+                                    <a
+                                      href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline flex-shrink-0"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                      Visit site
+                                    </a>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
                   </div>
                 ) : (
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center mt-4">

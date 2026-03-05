@@ -77,6 +77,7 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
     setClosedDealData(extractedData);
     setDealClosed(true);
     setCurrentPhase('closure');
+    onStatusChange?.('completed');
   };
 
   const phases = [

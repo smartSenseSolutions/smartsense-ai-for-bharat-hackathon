@@ -223,7 +223,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
                           </p>
                         </div>
                         <p className="text-xs text-gray-600 mb-2 line-clamp-2">
-                          {activity.description.replace(/\b(published|draft|pending|completed|closed|open)\b/gi, match => match.charAt(0).toUpperCase() + match.slice(1).toLowerCase())}
+                          {(activity.description ?? '').replace(/\b(published|draft|pending|completed|closed|open)\b/gi, match => match.charAt(0).toUpperCase() + match.slice(1).toLowerCase())}
                         </p>
                         <div className="flex items-center gap-3">
                           <span className="flex items-center text-[10px] text-gray-400 font-medium">
