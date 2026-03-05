@@ -1956,7 +1956,6 @@ function AIRecommendationPhase({ proposal, onPhaseChange, readOnly }: { proposal
                   {metric.label}
                 </th>
               ))}
-              <th className="text-center text-xs font-medium text-gray-600 px-4 py-3 w-24">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -2005,9 +2004,10 @@ function AIRecommendationPhase({ proposal, onPhaseChange, readOnly }: { proposal
                       <span className="text-xs text-gray-500">{vendor.vendor_email}</span>
                     </div>
                   </td>
-                  {metrics.map((metric) => {
+                  {metrics.map((metric, mIdx) => {
                     const score = vendor[metric.field as keyof typeof vendor] as number || 0;
                     const citation = vendor.citations?.[metric.field] || vendor.citation;
+                    const isLast = mIdx === metrics.length - 1;
                     return (
                       <td key={metric.id} className="px-4 py-3 text-center relative group">
                         <span className={`text-sm font-medium ${getScoreColor(score)} cursor-help border-b border-dashed border-gray-300`}>
@@ -2015,27 +2015,20 @@ function AIRecommendationPhase({ proposal, onPhaseChange, readOnly }: { proposal
                         </span>
                         {/* Tooltip for metrics */}
                         {citation && (
-                          <div className="absolute z-50 hidden group-hover:block w-72 p-3 bg-gray-900 text-white text-xs rounded shadow-lg bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none text-left">
+                          <div className={`absolute z-50 hidden group-hover:block w-80 p-3 bg-gray-900 text-white text-xs rounded shadow-lg pointer-events-none text-left anim-fade-in
+                            ${isLast ? 'right-full mr-3 top-1/2 -translate-y-1/2' : 'bottom-full mb-2 left-1/2 -translate-x-1/2'}`}>
                             <p className="font-semibold mb-1 text-gray-200">AI Citation ({metric.label})</p>
                             <p className="text-gray-300 italic whitespace-pre-wrap break-words">"{citation}"</p>
                             {/* Little triangle arrow at bottom */}
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 mt-0"></div>
+                            <div className={`absolute border-4 border-transparent
+                              ${isLast
+                                ? 'left-full top-1/2 -translate-y-1/2 border-l-gray-900'
+                                : 'top-full left-1/2 -translate-x-1/2 border-t-gray-900'}`}></div>
                           </div>
                         )}
                       </td>
                     );
                   })}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleSendEmail(vendor)}
-                        className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-                        title="Send Email"
-                      >
-                        <Mail className="w-4 h-4 text-gray-600" />
-                      </button>
-                    </div>
-                  </td>
                 </tr>,
                 ...(vendor.is_recommended && hoveredVendor === uniqueId ? [
                   <tr key={`${uniqueId}-reason`}>

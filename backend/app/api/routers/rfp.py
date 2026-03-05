@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from app.core.database import get_db
-from app.models.domain import ProjectInvitedVendor
+from app.models.domain import Project, ProjectInvitedVendor
 from app.schemas.rfp import (
     RFPGenerateRequest,
     RFPGenerateResponse,
@@ -51,13 +51,23 @@ async def rfp_chat(request: RFPChatRequest):
 
 
 @router.post("/publish", response_model=RFPPublishResponse)
-def publish_rfp(request: RFPPublishRequest):
+async def publish_rfp(request: RFPPublishRequest, db: Session = Depends(get_db)):
     """
     Generate a PDF of the RFP and upload it to S3.
     File stored as {project_id}.pdf in the S3_RFP_BUCKET bucket.
     Returns the public S3 URL and S3 key.
     """
     try:
+        # Sync dates from DB source of truth
+        project = db.query(Project).filter(Project.id == request.project_id).first()
+        if project:
+            if project.rfp_expiry:
+                request.rfp_data["rfpDeadline"] = project.rfp_expiry
+            if project.delivery_timeline:
+                request.rfp_data["deliveryTimeline"] = project.delivery_timeline.strftime(
+                    "%d-%m-%Y"
+                )
+
         result = publish_rfp_to_s3(
             project_id=request.project_id,
             project_name=request.project_name,
@@ -104,7 +114,18 @@ async def distribute_rfp(request: RFPDistributeRequest, db: Session = Depends(ge
                 detail="RFP PDF not found in S3 and no rfp_data provided to generate it.",
             )
 
-    # 2. Send emails to all vendors with the PDF attached
+    # 2. Sync dates from DB source of truth if rfp_data is present
+    if request.rfp_data:
+        project = db.query(Project).filter(Project.id == request.project_id).first()
+        if project:
+            if project.rfp_expiry:
+                request.rfp_data["rfpDeadline"] = project.rfp_expiry
+            if project.delivery_timeline:
+                request.rfp_data["deliveryTimeline"] = project.delivery_timeline.strftime(
+                    "%d-%m-%Y"
+                )
+
+    # 3. Send emails to all vendors with the PDF attached
     attachment_name = f"RFP-{request.project_id}.pdf"
     vendors_dicts = [v.model_dump() for v in request.vendors]
 

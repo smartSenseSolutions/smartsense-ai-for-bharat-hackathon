@@ -24,6 +24,7 @@ interface Activity {
 
 interface DashboardStats {
   active_rfps_count: number;
+  total_rfps_count: number;
   total_savings: number;
   active_vendors_count: number;
   top_rfps: Array<{
@@ -101,9 +102,9 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
   };
 
   const metrics = [
-    { label: 'Active RFPs', value: stats?.active_rfps_count.toString() || '0', subtext: 'Ongoing', icon: FileText, color: 'text-blue-600 bg-blue-50' },
+    { label: 'All RFPs', value: stats?.total_rfps_count?.toString() || '0', subtext: 'Overall', icon: FileText, color: 'text-blue-600 bg-blue-50', link: 'proposals-list' as Screen },
     { label: 'Total Savings', value: `$${stats?.total_savings || 0}`, subtext: 'This Month', icon: DollarSign, color: 'text-gray-600 bg-gray-50' },
-    { label: 'Active Vendors', value: stats?.active_vendors_count.toString() || '0', subtext: 'Verified', icon: TrendingUp, color: 'text-blue-600 bg-blue-50' },
+    { label: 'Active Vendors', value: stats?.active_vendors_count?.toString() || '0', subtext: 'Verified', icon: TrendingUp, color: 'text-blue-600 bg-blue-50' },
   ];
 
   if (loading) {
@@ -136,7 +137,11 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
           {metrics.map((metric, index) => {
             const Icon = metric.icon;
             return (
-              <div key={index} className="bg-white border border-[#eeeff1] rounded-xl p-6">
+              <div
+                key={index}
+                className={`bg-white border border-[#eeeff1] rounded-xl p-6 transition-all ${metric.link ? 'cursor-pointer hover:border-blue-200 hover:shadow-sm' : ''}`}
+                onClick={() => metric.link && onNavigate(metric.link)}
+              >
                 <div className="flex items-start justify-between mb-5">
                   <div className={`p-2.5 rounded-lg ${metric.color}`}>
                     <Icon className="w-5 h-5" />
@@ -150,10 +155,9 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
           })}
         </div>
 
-        {/* Top Performing RFPs */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">Top Performing RFPs</h2>
+            <h2 className="text-base font-semibold text-gray-900">Active RFPs</h2>
           </div>
           <div className="grid grid-cols-4 gap-4">
             {stats?.top_rfps.map((rfp) => {
@@ -182,7 +186,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
             })}
             {(!stats?.top_rfps || stats.top_rfps.length === 0) && (
               <div className="col-span-4 py-8 text-center text-gray-500 border border-dashed border-gray-200 rounded-xl">
-                No active RFPs found.
+                No active RFPs (In Progress) found.
               </div>
             )}
           </div>

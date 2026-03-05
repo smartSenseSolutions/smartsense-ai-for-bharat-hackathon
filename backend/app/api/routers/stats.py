@@ -62,9 +62,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     4. Top 4 performing RFPs (recent active projects)
     """
     try:
-        # 1. Active RFPs (Status NOT IN (DRAFT, COMPLETED))
+        # 0. Total RFPs (All Projects)
+        total_rfps_count = db.query(Project).count()
+
+        # 1. Active RFPs (Strictly IN_PROGRESS)
         active_rfps_count = db.query(Project).filter(
-            Project.status.notin_([ProjectStatus.DRAFT, ProjectStatus.COMPLETED])
+            Project.status == "in-progress"
         ).count()
 
         # 2. Total Savings (Fixed to 0 for now)
@@ -73,10 +76,10 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         # 3. Active Vendors
         active_vendors_count = db.query(Vendor).count()
 
-        # 4. Top Performing RFPs (Top 4 recent projects, not draft/completed)
+        # 4. Active RFPs (Top 4 recent projects, IN_PROGRESS only)
         top_rfps = (
             db.query(Project)
-            .filter(Project.status.notin_([ProjectStatus.DRAFT, ProjectStatus.COMPLETED]))
+            .filter(Project.status == "in-progress")
             .order_by(Project.created_at.desc())
             .limit(4)
             .all()
@@ -93,6 +96,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
         return {
             "active_rfps_count": active_rfps_count,
+            "total_rfps_count": total_rfps_count,
             "total_savings": total_savings,
             "active_vendors_count": active_vendors_count,
             "top_rfps": top_rfps_data
