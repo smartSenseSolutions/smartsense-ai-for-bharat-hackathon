@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, Sparkles, FileText, CheckCircle2 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 
@@ -176,8 +177,8 @@ export function AIRFPCreator({ projectName, onBack, onSendForApproval }: AIRFPCr
             >
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                    ? 'bg-[#3B82F6] text-white'
-                    : 'bg-[#F3F4F6] text-gray-900'
+                  ? 'bg-[#3B82F6] text-white'
+                  : 'bg-[#F3F4F6] text-gray-900'
                   }`}
               >
                 {message.role === 'assistant' && (
@@ -194,10 +195,33 @@ export function AIRFPCreator({ projectName, onBack, onSendForApproval }: AIRFPCr
             <div className="flex justify-start">
               <div className="bg-[#F3F4F6] rounded-2xl px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  <div className="relative flex items-center justify-center w-5 h-5 mr-1">
+                    <motion.div
+                      animate={{
+                        rotate: 360,
+                        scale: [1, 1.2, 1],
+                        opacity: [0.5, 1, 0.5]
+                      }}
+                      transition={{
+                        rotate: { duration: 3, repeat: Infinity, ease: "linear" },
+                        scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+                        opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                      }}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                    </motion.div>
+                    <motion.div
+                      className="absolute inset-0 bg-blue-400 rounded-full filter blur-sm"
+                      animate={{
+                        scale: [1, 1.5, 1],
+                        opacity: [0.1, 0.2, 0.1]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
                   </div>
                   <span className="text-xs text-gray-500">AI is thinking...</span>
                 </div>
