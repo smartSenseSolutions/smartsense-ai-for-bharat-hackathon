@@ -113,7 +113,7 @@ export function ProposalsList({ projects = [], onNavigate, onCreateNew, onViewDe
         onClose={() => setShowModal(false)}
         onCreate={(projectName) => {
           setShowModal(false);
-          onNavigate({ screen: 'ai-rfp-creator-centered', projectName } as any);
+          onNavigate({ screen: 'ai-rfp-creator-centered', projectName, isNew: true } as any);
         }}
       />
 

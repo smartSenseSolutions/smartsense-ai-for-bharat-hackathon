@@ -256,6 +256,10 @@ export default function App() {
                 setCurrentScreen(data);
               } else {
                 // Handle object with screen and projectName
+                if (data.isNew) {
+                  setSelectedProposal(null);
+                  setCurrentRFPData(null);
+                }
                 setCurrentProjectName(data.projectName || '');
                 setCurrentScreen(data.screen);
                 // Auto-collapse sidebar when entering AI creator

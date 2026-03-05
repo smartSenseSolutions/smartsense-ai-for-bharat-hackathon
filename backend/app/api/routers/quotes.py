@@ -19,6 +19,7 @@ from app.services.quotes import (
     generate_deal_closure_extract,
 )
 from app.services.activity import log_activity
+from app.services.email import search_rfp_threads_nylas
 
 router = APIRouter(prefix="/api/quotes", tags=["Quotes & Negotiation"])
 

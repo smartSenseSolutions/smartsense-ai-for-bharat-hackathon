@@ -1,5 +1,6 @@
 import { ArrowLeft, Users, FileText, Phone, CheckCircle, Send, Languages, TrendingUp, Calendar, DollarSign, Clock, Mail, Sparkles, MapPin, Star, Award, Briefcase, Shield, X, IndianRupee, FileSpreadsheet, Download, Globe, ExternalLink, Search, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { useState, Fragment, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
@@ -669,34 +670,85 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
             {submittedQuery && (
               <div className="mb-5">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">{submittedQuery}</h3>
-                <p className="text-sm text-gray-600">{internalResults.length + externalResults.length} vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''} found</p>
+                <AnimatePresence mode="wait">
+                  {isInternalLoading || isExternalLoading ? (
+                    <motion.div
+                      key="searching"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="flex items-center gap-2"
+                    >
+                      <div className="flex gap-1">
+                        <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                        <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                        <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce"></span>
+                      </div>
+                      <p className="text-sm font-medium text-blue-600">
+                        {isInternalLoading ? 'Searching internal database...' : 'External search in progress...'}
+                        {internalResults.length > 0 && <span className="text-gray-400 ml-2">({internalResults.length} internal results found)</span>}
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.p
+                      key="found"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-sm text-gray-600"
+                    >
+                      <span className="font-semibold text-gray-900">{internalResults.length + externalResults.length}</span> vendor{internalResults.length + externalResults.length !== 1 ? 's' : ''} found
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </div>
             )}
 
-            {isInternalLoading && (
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
-                    <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
-                    <div className="h-3 bg-gray-100 rounded w-full mb-2" />
-                    <div className="h-3 bg-gray-100 rounded w-1/2" />
-                  </div>
-                ))}
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-4 h-4 text-green-600" />
+                <h3 className="text-sm font-semibold text-gray-700">Verified Vendors</h3>
+                <span className="text-xs text-gray-400">({isInternalLoading ? 'Searching...' : internalResults.length})</span>
               </div>
-            )}
 
-            {!isInternalLoading && internalResults.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield className="w-4 h-4 text-green-600" />
-                  <h3 className="text-sm font-semibold text-gray-700">Verified Vendors</h3>
-                  <span className="text-xs text-gray-400">({internalResults.length})</span>
-                </div>
+              {isInternalLoading ? (
                 <div className="grid grid-cols-2 gap-4">
-                  {internalResults.map(renderVendorCard)}
+                  {[1, 2, 3, 4].map(i => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, delay: i * 0.1 }}
+                      className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                      <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
+                      <div className="h-3 bg-gray-100 rounded w-full mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-1/2" />
+                    </motion.div>
+                  ))}
                 </div>
-              </div>
-            )}
+              ) : internalResults.length > 0 ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <AnimatePresence mode="popLayout">
+                    {internalResults.map((result, idx) => (
+                      <motion.div
+                        key={result.vendor_id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: idx * 0.05 }}
+                      >
+                        {renderVendorCard(result)}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              ) : !isExternalLoading && (
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
+                  <p className="text-sm text-gray-500 font-medium">No verified vendors met the search criteria.</p>
+                </div>
+              )}
+            </div>
 
             {(externalResults.length > 0 || isExternalLoading) && (
               <div className="mb-8">
@@ -717,15 +769,44 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
                 {isExternalLoading ? (
                   <div className="grid grid-cols-2 gap-4">
                     {[1, 2].map(i => (
-                      <div key={i} className="bg-white border border-[#eeeff1] rounded-xl p-4 animate-pulse">
-                        <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
-                        <div className="h-3 bg-gray-100 rounded w-full mb-2" />
-                      </div>
+                      <motion.div
+                        key={`ext-loading-${i}`}
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: i * 0.1 }}
+                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="h-5 bg-gray-100 rounded-md w-1/2" />
+                          <div className="h-4 bg-gray-50 rounded-full w-14" />
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="h-3 bg-gray-100 rounded w-full" />
+                          <div className="h-3 bg-gray-100 rounded w-[85%]" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="h-3 bg-gray-100 rounded w-24" />
+                          <div className="h-3 bg-blue-50/50 rounded w-20" />
+                        </div>
+                      </motion.div>
                     ))}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
-                    {externalResults.map(renderVendorCard)}
+                    <AnimatePresence mode="popLayout">
+                      {externalResults.map((result, idx) => (
+                        <motion.div
+                          key={result.vendor_id}
+                          layout
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: idx * 0.05 }}
+                        >
+                          {renderVendorCard(result)}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
