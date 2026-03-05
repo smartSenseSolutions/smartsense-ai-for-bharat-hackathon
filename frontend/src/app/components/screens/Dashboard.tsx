@@ -197,8 +197,8 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
             </Badge>
           </div>
           <div className="bg-white border border-[#eeeff1] rounded-xl overflow-hidden shadow-sm">
-            <div className="divide-y divide-[#eeeff1] max-h-[500px] overflow-y-auto scrollbar-hide">
-              {activities.map((activity) => {
+            <div className="divide-y divide-[#eeeff1]">
+              {activities.slice(0, 5).map((activity) => {
                 const activityTime = new Date(activity.created_at + (activity.created_at.includes('Z') ? '' : 'Z')).getTime();
                 const now = new Date().getTime();
                 const diffMins = (now - activityTime) / (1000 * 60);
