@@ -262,5 +262,12 @@ def save_search_history(payload: SearchHistoryResponse, db: Session = Depends(ge
         )
         db.add(new_history)
 
+    log_activity(
+        db,
+        type="vendor_search",
+        title="Marketplace search performed",
+        description=f"Query: {payload.query}"
+    )
+
     db.commit()
     return {"status": "success"}

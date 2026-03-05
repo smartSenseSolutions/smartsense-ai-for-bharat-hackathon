@@ -1,7 +1,7 @@
 import { FileText, DollarSign, TrendingUp, Sparkles, Clock } from 'lucide-react';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
+
 import type { Screen } from '@/app/App';
 import { useState, useEffect } from 'react';
 
@@ -72,11 +72,11 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
     if (s === 'open' || s === 'pending') displayStatus = 'published';
     if (s === 'closed') displayStatus = 'completed';
 
-    const cardStyles: Record<string, string> = {
-      draft: 'bg-rose-50 border-rose-100',
-      published: 'bg-amber-50 border-amber-100',
-      'in-progress': 'bg-blue-50 border-blue-100',
-      completed: 'bg-emerald-50 border-emerald-100',
+    const badgeStyles: Record<string, string> = {
+      draft: 'bg-rose-100 text-rose-700',
+      published: 'bg-[#FEF3C7] text-[#92400E]', // Yellow/Amber for published
+      'in-progress': 'bg-blue-100 text-blue-700',
+      completed: 'bg-emerald-100 text-emerald-800',
     };
 
     const labels: Record<string, string> = {
@@ -87,7 +87,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
     };
 
     return {
-      cardClass: cardStyles[displayStatus] || 'bg-white border-[#eeeff1]',
+      badgeClass: badgeStyles[displayStatus] || 'bg-gray-100 text-gray-700',
       label: labels[displayStatus] || (status.charAt(0).toUpperCase() + status.slice(1).toLowerCase())
     };
   };
@@ -157,18 +157,18 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
           </div>
           <div className="grid grid-cols-4 gap-4">
             {stats?.top_rfps.map((rfp) => {
-              const { cardClass, label } = getStatusStyles(rfp.status);
+              const { badgeClass, label } = getStatusStyles(rfp.status);
               return (
                 <div
                   key={rfp.id}
-                  className={`flex flex-col min-h-[140px] border rounded-xl p-5 hover:bg-gray-100/50 transition-all cursor-pointer ${cardClass}`}
+                  className="flex flex-col min-h-[140px] border border-gray-100 bg-gray-50 rounded-xl p-5 hover:bg-gray-100 transition-all cursor-pointer"
                   onClick={() => onNavigate('rfp-manager')}
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1 min-w-0 pr-2">
                       <h3 className="text-sm font-semibold text-gray-900 mb-1">{rfp.project_name}</h3>
                     </div>
-                    <Badge className="text-[10px] px-2 py-0.5 font-medium bg-gray-200 text-gray-700 border-none shadow-none whitespace-nowrap">
+                    <Badge className={`text-[10px] px-2 py-0.5 font-medium border-none shadow-none whitespace-nowrap ${badgeClass}`}>
                       {label}
                     </Badge>
                   </div>
@@ -198,47 +198,50 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
           </div>
           <div className="bg-white border border-[#eeeff1] rounded-xl overflow-hidden shadow-sm">
             <div className="divide-y divide-[#eeeff1] max-h-[500px] overflow-y-auto scrollbar-hide">
-              {activities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="p-5 hover:bg-gray-50 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <p className="text-sm text-gray-900 font-semibold group-hover:text-blue-600 transition-colors">
-                          {activity.title}
+              {activities.map((activity) => {
+                const activityTime = new Date(activity.created_at + (activity.created_at.includes('Z') ? '' : 'Z')).getTime();
+                const now = new Date().getTime();
+                const diffMins = (now - activityTime) / (1000 * 60);
+                const isRecent = diffMins < 3;
+
+                const formattedTime = new Date(activity.created_at + (activity.created_at.includes('Z') ? '' : 'Z')).toLocaleString('en-GB', {
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit', second: '2-digit',
+                  hour12: false
+                });
+
+                return (
+                  <div
+                    key={activity.id}
+                    className="p-5"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <p className="text-sm text-gray-900 font-semibold">
+                            {activity.title}
+                          </p>
+                        </div>
+                        <p className="text-xs text-gray-600 mb-2 line-clamp-2">
+                          {activity.description.replace(/\b(published|draft|pending|completed|closed|open)\b/gi, match => match.charAt(0).toUpperCase() + match.slice(1).toLowerCase())}
                         </p>
-                        {activity.is_new && (
-                          <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-none font-bold uppercase tracking-wider">New</Badge>
-                        )}
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center text-[10px] text-gray-400 font-medium">
+                            <Clock className="w-3 h-3 mr-1" />
+                            {formattedTime}
+                          </span>
+                          {activity.project_id && (
+                            <span className="text-[10px] text-blue-500 font-medium">Project ID: {activity.project_id}</span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-600 mb-2 line-clamp-2">{activity.description}</p>
-                      <div className="flex items-center gap-3">
-                        <span className="flex items-center text-[10px] text-gray-400 font-medium">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {new Date(activity.created_at).toLocaleString()}
-                        </span>
-                        {activity.project_id && (
-                          <span className="text-[10px] text-blue-500 font-medium">Project ID: {activity.project_id.split('-')[0]}...</span>
-                        )}
-                      </div>
+                      {isRecent && (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-none font-bold uppercase tracking-wider shrink-0 mt-0.5">New</Badge>
+                      )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-xs font-medium"
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        if (activity.project_id) onNavigate('rfp-manager');
-                        else if (activity.vendor_id) onNavigate('vendor-market');
-                      }}
-                    >
-                      View Details
-                    </Button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {activities.length === 0 && (
                 <div className="py-20 text-center text-gray-500">
                   <p className="text-sm">No recent activities found.</p>
