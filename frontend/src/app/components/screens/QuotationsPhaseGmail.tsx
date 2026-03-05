@@ -311,16 +311,29 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
 
                         <div className="flex items-center gap-3 text-xs text-gray-600">
                           {latestQuote.price != null && (
-                            <span className="flex items-center gap-1 font-medium text-gray-900">
+                            <span className="flex items-center gap-1 font-semibold text-gray-900">
                               <IndianRupee className="w-3.5 h-3.5" />
                               {Number(latestQuote.price).toLocaleString('en-IN')}
                             </span>
                           )}
                           {latestQuote.delivery_timeline && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-1 text-gray-700">
                               <Clock className="w-3.5 h-3.5 text-gray-400" />
                               {latestQuote.delivery_timeline}
                             </span>
+                          )}
+                          {/* Attachment Icons */}
+                          {quotationAttachments[latestQuote.id]?.length > 0 && (
+                            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-gray-200">
+                              {quotationAttachments[latestQuote.id].map((att, idx) => (
+                                <FileIcon
+                                  key={idx}
+                                  contentType={att.content_type}
+                                  filename={att.filename}
+                                  className="w-3.5 h-3.5"
+                                />
+                              ))}
+                            </div>
                           )}
                           {group.quotes.length > 1 && (
                             <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold text-[10px]">

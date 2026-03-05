@@ -385,38 +385,185 @@ def _addr_list(addrs) -> list[dict]:
     return result
 
 
-def list_thread_messages(thread_id: str) -> list[dict]:
+def list_thread_messages(
+    thread_id: str,
+    project_id: str = "",
+    vendor_email: str = "",
+) -> list[dict]:
     """Return all messages in an email thread (as plain dicts).
 
     Searches both the sender grant and the inbound grant so that outgoing
     RFP emails and vendor replies (which arrive at the Nylas inbound email)
     are both included.
+
+    When project_id and vendor_email are provided, also searches by subject
+    (RFP-{project_id}) to capture messages that ended up on different Nylas
+    thread_ids (common when replies cross grant boundaries).
     """
     nylas = get_nylas_client()
     grant_id = _require_grant_id()
+    inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
 
     # Collect raw messages from both grants
     raw_messages = []
 
+    # --- Strategy 1: fetch by thread_id (original approach) ---
     try:
         response = nylas.messages.list(
             identifier=grant_id,
             query_params={"thread_id": thread_id, "fields": "include_headers"},
         )
+        print(
+            f"[thread] Strategy 1a (sender grant, thread_id={thread_id}): {len(response.data)} msgs",
+            flush=True,
+        )
         raw_messages.extend(response.data)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[thread] Strategy 1a failed: {e}", flush=True)
 
-    inbound_grant = settings.NYLAS_INBOUND_GRANT_ID
     if inbound_grant and inbound_grant != grant_id:
         try:
             response = nylas.messages.list(
                 identifier=inbound_grant,
                 query_params={"thread_id": thread_id, "fields": "include_headers"},
             )
+            print(
+                f"[thread] Strategy 1b (inbound grant, thread_id={thread_id}): {len(response.data)} msgs",
+                flush=True,
+            )
             raw_messages.extend(response.data)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[thread] Strategy 1b failed: {e}", flush=True)
+
+    # --- Strategy 2: subject-based search (catches cross-grant replies) ---
+    if project_id and vendor_email:
+        subject_query = f"subject:RFP-{project_id}"
+
+        # Search sender grant (Gmail) by subject + vendor email
+        # NOTE: search_query_native cannot be combined with 'fields' param
+        for query in [
+            f"{subject_query} to:{vendor_email}",
+            f"{subject_query} from:{vendor_email}",
+        ]:
+            try:
+                response = nylas.messages.list(
+                    identifier=grant_id,
+                    query_params={
+                        "search_query_native": query,
+                        "limit": 30,
+                    },
+                )
+                print(
+                    f"[thread] Strategy 2a (sender, query='{query}'): {len(response.data)} msgs",
+                    flush=True,
+                )
+                raw_messages.extend(response.data)
+            except Exception as e:
+                print(f"[thread] Strategy 2a failed ({query}): {e}", flush=True)
+
+        # Also search sender grant by subject alone to catch vendor replies
+        # that Gmail received but aren't matched by from:/to: queries
+        try:
+            response = nylas.messages.list(
+                identifier=grant_id,
+                query_params={
+                    "search_query_native": subject_query,
+                    "limit": 50,
+                },
+            )
+            print(
+                f"[thread] Strategy 2a-broad (sender, subject-only): {len(response.data)} raw msgs",
+                flush=True,
+            )
+            # Client-side filter: keep only messages involving this vendor
+            vendor_lower = vendor_email.lower()
+            our_emails = {
+                settings.NYLAS_SENDER_EMAIL.lower(),
+                settings.SUPERUSER_EMAIL.lower(),
+            }
+            matched_broad = 0
+            for msg in response.data:
+                to_emails = {
+                    (getattr(a, "email", "") or "").lower()
+                    for a in (getattr(msg, "to", None) or [])
+                }
+                from_emails = {
+                    (getattr(a, "email", "") or "").lower()
+                    for a in (getattr(msg, "from_", None) or [])
+                }
+                all_emails = to_emails | from_emails
+                # Keep if vendor email in to/from, or if it's from us TO vendor
+                if vendor_lower in all_emails:
+                    raw_messages.append(msg)
+                    matched_broad += 1
+                elif (from_emails & our_emails) and vendor_lower in (
+                    msg.body or ""
+                ).lower():
+                    raw_messages.append(msg)
+                    matched_broad += 1
+            print(
+                f"[thread] Strategy 2a-broad after vendor filter: {matched_broad} msgs",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"[thread] Strategy 2a-broad failed: {e}", flush=True)
+
+        # Search inbound grant by subject
+        # Inbound grant may rewrite email addresses (virtual addressing),
+        # so we filter by vendor NAME in the from/to fields, or by vendor
+        # email appearing in the message body (common in reply chains).
+        if inbound_grant and inbound_grant != grant_id:
+            try:
+                response = nylas.messages.list(
+                    identifier=inbound_grant,
+                    query_params={
+                        "search_query_native": subject_query,
+                        "limit": 30,
+                    },
+                )
+                print(
+                    f"[thread] Strategy 2b (inbound, query='{subject_query}'): {len(response.data)} raw msgs",
+                    flush=True,
+                )
+                # Filter: keep only messages related to this vendor
+                vendor_lower = vendor_email.lower()
+                matched = 0
+                for msg in response.data:
+                    # Check from/to name or email for vendor
+                    from_names = {
+                        (getattr(a, "name", "") or "").lower()
+                        for a in (getattr(msg, "from_", None) or [])
+                    }
+                    from_emails_raw = {
+                        (getattr(a, "email", "") or "").lower()
+                        for a in (getattr(msg, "from_", None) or [])
+                    }
+                    to_names = {
+                        (getattr(a, "name", "") or "").lower()
+                        for a in (getattr(msg, "to", None) or [])
+                    }
+                    to_emails_raw = {
+                        (getattr(a, "email", "") or "").lower()
+                        for a in (getattr(msg, "to", None) or [])
+                    }
+                    all_addrs = from_emails_raw | to_emails_raw
+                    body_lower = (msg.body or "").lower()
+                    # Match by: email in addresses, email in body, or same thread
+                    if (
+                        vendor_lower in all_addrs
+                        or vendor_lower in body_lower
+                        or msg.thread_id == thread_id
+                    ):
+                        raw_messages.append(msg)
+                        matched += 1
+                print(
+                    f"[thread] Strategy 2b after vendor filter: {matched} msgs",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"[thread] Strategy 2b failed: {e}", flush=True)
+
+    print(f"[thread] Total raw (before dedup): {len(raw_messages)}", flush=True)
 
     # Deduplicate by message ID
     seen_ids: set[str] = set()
@@ -459,6 +606,9 @@ def list_thread_messages(thread_id: str) -> list[dict]:
                 "attachments": attachments,
             }
         )
+
+    # Sort by date ascending (oldest first)
+    result.sort(key=lambda m: m.get("date") or 0)
     return result
 
 

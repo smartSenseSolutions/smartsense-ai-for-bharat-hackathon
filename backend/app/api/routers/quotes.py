@@ -5,15 +5,74 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.domain import ProjectInvitedVendor, Quote
-from app.schemas.domain import QuoteScoreRequest, NegotiationEmailRequest
+from app.schemas.domain import (
+    QuoteScoreRequest,
+    NegotiationEmailRequest,
+    QuoteBulkStatusUpdate,
+)
 from app.services.quotes import (
     score_quotes,
     generate_negotiation_email,
     generate_ai_recommendations,
+    generate_negotiation_insights,
 )
 from app.services.activity import log_activity
 
 router = APIRouter(prefix="/api/quotes", tags=["Quotes & Negotiation"])
+
+
+@router.put("/bulk-status")
+async def bulk_update_quote_status(
+    request: QuoteBulkStatusUpdate, db: Session = Depends(get_db)
+):
+    """
+    Update the status of multiple quotes for a project based on vendor emails.
+    If a quote record doesn't exist (e.g. vendor discovered via AI/search),
+    this record will be created.
+    """
+    import uuid
+    from app.models.domain import Project
+
+    project = db.query(Project).filter(Project.id == request.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Find existing quotes
+    existing_quotes = (
+        db.query(Quote).filter(Quote.project_id == request.project_id).all()
+    )
+    existing_emails = {
+        (q.sla_details or {}).get("sender_email"): q for q in existing_quotes
+    }
+
+    # AI recommendation data for fallback
+    recs_data = (project.ai_recommendations or {}).get("recommendations", [])
+    rec_by_email = {r.get("vendor_email"): r for r in recs_data}
+
+    for email in request.vendor_emails:
+        if email in existing_emails:
+            existing_emails[email].status = request.status
+        elif email in rec_by_email:
+            # Create a shell quote record from AI recommendation data
+            rec = rec_by_email[email]
+            new_quote = Quote(
+                id=str(uuid.uuid4()),
+                project_id=request.project_id,
+                status=request.status,
+                sla_details={
+                    "sender_email": email,
+                    "sender_name": rec.get("vendor_name"),
+                    "thread_id": rec.get("thread_id"),
+                    "notes": rec.get("recommendation_reason"),
+                },
+            )
+            db.add(new_quote)
+
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Updated {len(request.vendor_emails)} vendor status to {request.status}",
+    }
 
 
 @router.get("/by-project/{project_id}")
@@ -160,7 +219,30 @@ async def create_negotiation_email(request: NegotiationEmailRequest):
         db,
         type="negotiation_started",
         title=f"Negotiation started",
-        description=f"Drafted negotiation email for quote {request.quote_id}"
+        description=f"Drafted negotiation email for quote {request.quote_id}",
     )
 
     return {"status": "success", "email_body": email_body}
+
+
+@router.post("/negotiation-insights")
+async def get_negotiation_insights(
+    thread_id: str = "",
+    vendor_name: str = "",
+    vendor_email: str = "",
+    project_id: str = "",
+):
+    """
+    Analyze a negotiation email thread and return AI-extracted insights:
+    price, delivery timeline, key terms, vendor sentiment, and summary.
+    """
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="thread_id is required")
+
+    insights = await generate_negotiation_insights(
+        thread_id=thread_id,
+        vendor_name=vendor_name,
+        vendor_email=vendor_email,
+        project_id=project_id,
+    )
+    return insights

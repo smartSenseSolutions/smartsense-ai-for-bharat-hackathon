@@ -1,3 +1,4 @@
+import asyncio
 import boto3
 from app.core.config import settings
 
@@ -22,7 +23,8 @@ async def translate_text(
 
     try:
         translate = get_translate_client()
-        response = translate.translate_text(
+        response = await asyncio.to_thread(
+            translate.translate_text,
             Text=text,
             SourceLanguageCode=source_language_code,
             TargetLanguageCode=target_language_code,

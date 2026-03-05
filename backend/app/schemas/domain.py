@@ -11,6 +11,12 @@ class QuoteSubmitRequest(BaseModel):
     sla_details: dict
 
 
+class QuoteBulkStatusUpdate(BaseModel):
+    project_id: str
+    vendor_emails: List[str]
+    status: str
+
+
 class QuoteScoreRequest(BaseModel):
     quotes: List[dict]  # list of serialized quotes
 
@@ -80,6 +86,7 @@ class ProjectInvitedVendorResponse(BaseModel):
 class VendorRecommendationScore(BaseModel):
     vendor_name: str
     vendor_email: str
+    thread_id: Optional[str] = None
     price_score: float
     delivery_score: float
     quality_score: float

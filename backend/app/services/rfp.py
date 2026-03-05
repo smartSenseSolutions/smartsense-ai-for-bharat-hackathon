@@ -1,3 +1,4 @@
+import asyncio
 import boto3
 import re
 import uuid
@@ -52,7 +53,7 @@ async def generate_rfp_draft(
     """
 
     try:
-        response: RFPGenerateResponse = structured_llm.invoke(prompt)
+        response: RFPGenerateResponse = await asyncio.to_thread(structured_llm.invoke, prompt)
         return response.model_dump()
     except Exception as e:
         print(f"Error generating RFP with LangChain Bedrock: {e}")
@@ -132,7 +133,7 @@ async def chat_rfp_assistant(project_name: str, messages: list[dict]) -> dict:
     structured_llm = llm.with_structured_output(RFPChatResponse)
 
     try:
-        response: RFPChatResponse = structured_llm.invoke(lc_messages)
+        response: RFPChatResponse = await asyncio.to_thread(structured_llm.invoke, lc_messages)
         return response.model_dump()
 
     except Exception as exc:

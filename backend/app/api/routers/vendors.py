@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -147,17 +149,16 @@ async def answer_vendor_question(question: str):
     )
 
     try:
-        response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
-        content = (
-            json.loads(response.get("body").read())
-            .get("content", [])[0]
-            .get("text", "")
-        )
+        def _invoke():
+            r = bedrock.invoke_model(
+                modelId=settings.BEDROCK_MODEL_ID,
+                body=body,
+                contentType="application/json",
+                accept="application/json",
+            )
+            return json.loads(r.get("body").read()).get("content", [])[0].get("text", "")
+
+        content = await asyncio.to_thread(_invoke)
         return {"suggested_answer": content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

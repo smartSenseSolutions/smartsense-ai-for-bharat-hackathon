@@ -7,6 +7,7 @@ generating embeddings via Amazon Titan Embeddings v2, and indexing into
 OpenSearch for vector search.
 """
 
+import asyncio
 import json
 import re
 import traceback
@@ -327,7 +328,8 @@ async def extract_and_summarize(doc_bytes: bytes, filename: str) -> dict:
         }
     ]
 
-    response = bedrock.converse(
+    response = await asyncio.to_thread(
+        bedrock.converse,
         modelId=settings.BEDROCK_NOVA_MODEL_ID,
         messages=messages,
         inferenceConfig={"maxTokens": 1024, "temperature": 0.1},
@@ -446,7 +448,7 @@ async def process_vendor_document(doc_id: str, db: Session) -> bool:
             f"Authority: {doc.issuing_authority or ''}\n"
             f"Summary: {doc.document_summary or ''}"
         )
-        embedding = generate_embedding(embed_text)
+        embedding = await asyncio.to_thread(generate_embedding, embed_text)
 
         # 5. Index to OpenSearch
         metadata = {
@@ -511,7 +513,7 @@ async def process_pending_documents(db: Session) -> dict:
 async def search_documents(query: str, db: Session, limit: int = 10) -> list[dict]:
     """Embed the query and perform kNN search on OpenSearch."""
     # Generate query embedding
-    query_embedding = generate_embedding(query)
+    query_embedding = await asyncio.to_thread(generate_embedding, query)
 
     client = _get_opensearch_client()
 
