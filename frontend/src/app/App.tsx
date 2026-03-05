@@ -68,11 +68,17 @@ export default function App() {
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [currentRFP, setCurrentRFP] = useState<any>(null);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
-  const [selectedProposal, setSelectedProposal] = useState<any>(null);
+  const [selectedProposal, setSelectedProposal] = useState<any>(() => {
+    const stored = localStorage.getItem('app_selectedProposal');
+    return stored ? JSON.parse(stored) : null;
+  });
   const [currentProjectName, setCurrentProjectName] = useState<string>(() => {
     return localStorage.getItem('app_currentProjectName') || '';
   });
-  const [currentRFPData, setCurrentRFPData] = useState<any>(null);
+  const [currentRFPData, setCurrentRFPData] = useState<any>(() => {
+    const stored = localStorage.getItem('app_currentRFPData');
+    return stored ? JSON.parse(stored) : null;
+  });
 
   useEffect(() => {
     localStorage.setItem('app_currentScreen', currentScreen);
@@ -81,6 +87,23 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('app_currentProjectName', currentProjectName);
   }, [currentProjectName]);
+
+  useEffect(() => {
+    if (selectedProposal) {
+      localStorage.setItem('app_selectedProposal', JSON.stringify(selectedProposal));
+    } else {
+      localStorage.removeItem('app_selectedProposal');
+    }
+  }, [selectedProposal]);
+
+  useEffect(() => {
+    if (currentRFPData) {
+      localStorage.setItem('app_currentRFPData', JSON.stringify(currentRFPData));
+    } else {
+      localStorage.removeItem('app_currentRFPData');
+    }
+  }, [currentRFPData]);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';

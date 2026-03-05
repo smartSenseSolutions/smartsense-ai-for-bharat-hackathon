@@ -49,9 +49,29 @@ interface ProposalDetailsProps {
 }
 
 export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }: ProposalDetailsProps) {
-  const [currentPhase, setCurrentPhase] = useState<'invite' | 'quotations' | 'ai-recommendation' | 'negotiations' | 'closure'>('invite');
+  const proposalKey = proposal?.id || '';
+  const [currentPhase, setCurrentPhase] = useState<'invite' | 'quotations' | 'ai-recommendation' | 'negotiations' | 'closure'>(() => {
+    const stored = localStorage.getItem(`app_phase_${proposalKey}`);
+    return (stored as any) || 'invite';
+  });
   const [dealClosed, setDealClosed] = useState(false);
   const [closedDealData, setClosedDealData] = useState<any>(null);
+
+  // Persist phase tab to localStorage
+  useEffect(() => {
+    if (proposalKey) {
+      localStorage.setItem(`app_phase_${proposalKey}`, currentPhase);
+    }
+  }, [currentPhase, proposalKey]);
+
+  // Lifted search state so it persists across phase tab switches
+  const [internalResults, setInternalResults] = useState<AIVendorResult[]>([]);
+  const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const [isInternalLoading, setIsInternalLoading] = useState(false);
+  const [isExternalLoading, setIsExternalLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const handleDealClosure = (vendor: any, extractedData: any) => {
     setClosedDealData(extractedData);
@@ -136,7 +156,15 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
       {/* Content */}
       <div className="overflow-y-auto max-h-[calc(100vh-250px)] hide-scrollbar">
         <div className="bg-white rounded-xl p-5">
-          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} readOnly={dealClosed} />}
+          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} readOnly={dealClosed}
+            internalResults={internalResults} setInternalResults={setInternalResults}
+            externalResults={externalResults} setExternalResults={setExternalResults}
+            searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+            submittedQuery={submittedQuery} setSubmittedQuery={setSubmittedQuery}
+            isInternalLoading={isInternalLoading} setIsInternalLoading={setIsInternalLoading}
+            isExternalLoading={isExternalLoading} setIsExternalLoading={setIsExternalLoading}
+            hasSearched={hasSearched} setHasSearched={setHasSearched}
+          />}
           {currentPhase === 'quotations' && <QuotationsPhaseGmail proposal={proposal} readOnly={dealClosed} />}
           {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} onPhaseChange={setCurrentPhase} readOnly={dealClosed} />}
           {currentPhase === 'negotiations' && <NegotiationsPhase proposal={proposal} readOnly={dealClosed} onDealClosure={handleDealClosure} />}
@@ -157,20 +185,39 @@ interface InvitedVendorRecord {
   invited_at: string;
 }
 
-function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { proposal: any, onStatusChange?: (status: string) => void, onInvitesSent?: () => void, readOnly?: boolean }) {
+function InvitePhase({ proposal, onStatusChange, readOnly,
+  internalResults, setInternalResults,
+  externalResults, setExternalResults,
+  searchQuery, setSearchQuery,
+  submittedQuery, setSubmittedQuery,
+  isInternalLoading, setIsInternalLoading,
+  isExternalLoading, setIsExternalLoading,
+  hasSearched, setHasSearched,
+}: {
+  proposal: any,
+  onStatusChange?: (status: string) => void,
+  readOnly?: boolean,
+  internalResults: AIVendorResult[],
+  setInternalResults: (v: AIVendorResult[]) => void,
+  externalResults: AIVendorResult[],
+  setExternalResults: (v: AIVendorResult[]) => void,
+  searchQuery: string,
+  setSearchQuery: (v: string) => void,
+  submittedQuery: string,
+  setSubmittedQuery: (v: string) => void,
+  isInternalLoading: boolean,
+  setIsInternalLoading: (v: boolean) => void,
+  isExternalLoading: boolean,
+  setIsExternalLoading: (v: boolean) => void,
+  hasSearched: boolean,
+  setHasSearched: (v: boolean) => void,
+}) {
   const [activeTab, setActiveTab] = useState<'search' | 'invited'>('search');
   const [invitedVendorsList, setInvitedVendorsList] = useState<InvitedVendorRecord[]>([]);
   const [isLoadingInvited, setIsLoadingInvited] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState('');
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [selectedVendorForPanel, setSelectedVendorForPanel] = useState<any>(null);
-
-  const [internalResults, setInternalResults] = useState<AIVendorResult[]>([]);
-  const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
-  const [isInternalLoading, setIsInternalLoading] = useState(false);
-  const [isExternalLoading, setIsExternalLoading] = useState(false);
   const [isSendingInvites, setIsSendingInvites] = useState(false);
 
   // Derive the set of invited vendor IDs for the side-panel "Invite sent" badge
@@ -202,7 +249,8 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { pr
 
   useEffect(() => {
     fetchInvitedVendors();
-    if (proposal && proposal.status === 'published') {
+    // Only auto-search on the very first mount for this proposal
+    if (!hasSearched && proposal && proposal.status === 'published') {
       if (proposal.rfpData) {
         fireRFPSearch(proposal.rfpData);
       } else if (proposal.title) {
@@ -222,6 +270,7 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { pr
     setExternalResults([]);
     setIsInternalLoading(true);
     setIsExternalLoading(true);
+    setHasSearched(true);
 
     const token = localStorage.getItem('auth_token');
     const headers = {
@@ -290,6 +339,7 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { pr
     setExternalResults([]);
     setIsInternalLoading(true);
     setIsExternalLoading(true);
+    setHasSearched(true);
 
     const token = localStorage.getItem('auth_token');
     const headers = {
@@ -422,7 +472,6 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { pr
         onStatusChange?.('in-progress');
       }
       setSelectedVendors([]);
-      onInvitesSent?.();
     } catch (err: any) {
       console.error('Send invites failed:', err);
       toast.error('Failed to send invites: ' + (err.message || 'Unknown error'));
@@ -2549,344 +2598,349 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
           </p>
         </div>
       ) : (
-    <div className="grid grid-cols-12 gap-5 h-[calc(100vh-330px)]">
-      {/* Left Pane: Vendor List */}
-      <div className="col-span-3 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Negotiations</h3>
-          <p className="text-[10px] text-gray-500 mt-0.5">{quotes.length} active</p>
-        </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-          {quotes.map((q: any) => (
-            <button
-              key={q.id}
-              onClick={() => handleSelectQuote(q)}
-              className={`w-full text-left px-4 py-3 transition-all ${selectedQuote?.id === q.id ? 'bg-blue-50 border-l-2 border-blue-600' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${selectedQuote?.id === q.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                  {(q.vendor_name || 'V').substring(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{q.vendor_name}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{q.email_subject || q.sender_email}</p>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Right Pane */}
-      <div className="col-span-9 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
-        {selectedQuote ? (
-          <>
-            {/* Compact Header */}
-            <div className="px-5 py-3 border-b border-gray-100 bg-white flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-bold text-gray-900">{selectedQuote.vendor_name}</h3>
-                <span className="text-[10px] text-gray-400">{selectedQuote.sender_email}</span>
-              </div>
-              <Badge className="bg-orange-100 text-orange-800 border-orange-200 px-2 py-0.5 text-[9px] uppercase font-bold tracking-wider">
-                Negotiating
-              </Badge>
+        <div className="grid grid-cols-12 gap-5 h-[calc(100vh-330px)]">
+          {/* Left Pane: Vendor List */}
+          <div className="col-span-3 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Negotiations</h3>
+              <p className="text-[10px] text-gray-500 mt-0.5">{quotes.length} active</p>
             </div>
-
-            {/* Collapsible AI Insights */}
-            <div className="border-b border-gray-100 flex-shrink-0">
-              <button
-                onClick={() => setInsightsOpen(!insightsOpen)}
-                className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="text-[10px] font-black text-gray-900 uppercase tracking-[0.15em]">AI Negotiation Insights</span>
-                  {isInsightsLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
-                </div>
-                {insightsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-              </button>
-
-              {insightsOpen && (
-                <div className="px-5 pb-4">
-                  {insights ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Price */}
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 rounded-lg p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <IndianRupee className="w-3 h-3 text-green-600" />
-                          <span className="text-[9px] font-bold text-green-800 uppercase tracking-wider">Price</span>
-                        </div>
-                        <p className="text-sm font-bold text-gray-900">{insights.price}</p>
-                      </div>
-                      {/* Delivery */}
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100/60 rounded-lg p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Clock className="w-3 h-3 text-blue-600" />
-                          <span className="text-[9px] font-bold text-blue-800 uppercase tracking-wider">Delivery</span>
-                        </div>
-                        <p className="text-sm font-bold text-gray-900">{insights.delivery_timeline}</p>
-                      </div>
-                      {/* Sentiment */}
-                      <div className={`rounded-lg p-3 ring-1 ${sentimentConfig[insights.sentiment]?.bg || sentimentConfig.neutral.bg}`}>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <TrendingUp className="w-3 h-3 text-gray-600" />
-                          <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Vendor Sentiment</span>
-                        </div>
-                        <p className={`text-sm font-bold ${sentimentConfig[insights.sentiment]?.color || 'text-gray-900'}`}>
-                          {sentimentConfig[insights.sentiment]?.label || insights.sentiment}
-                        </p>
-                      </div>
-                      {/* Latest Change */}
-                      <div className="bg-gradient-to-br from-amber-50 to-yellow-50/50 border border-amber-100/60 rounded-lg p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <MessageSquare className="w-3 h-3 text-amber-600" />
-                          <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider">Latest Update</span>
-                        </div>
-                        <p className="text-xs text-gray-700 leading-relaxed">{insights.latest_change}</p>
-                      </div>
-                      {/* Key Terms */}
-                      {insights.key_terms?.length > 0 && (
-                        <div className="col-span-2 bg-gray-50/80 border border-gray-100 rounded-lg p-3">
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <Shield className="w-3 h-3 text-gray-600" />
-                            <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Key Terms</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {insights.key_terms.map((term: string, i: number) => (
-                              <span key={i} className="px-2 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-medium text-gray-700">
-                                {term}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {/* Summary */}
-                      <div className="col-span-2 bg-blue-50/50 border border-blue-100/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-700 leading-relaxed italic">&ldquo;{insights.summary}&rdquo;</p>
-                      </div>
-                    </div>
-                  ) : isInsightsLoading ? (
-                    <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-xs">Analyzing negotiation thread...</span>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-xs text-gray-400">Select a vendor with an active thread to see AI insights.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Email Thread Area — Scrollable */}
-            <div className="flex-1 overflow-y-auto px-5 py-5 bg-gray-50/20">
-              {isThreadLoading ? (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
-                  <span className="text-xs">Loading conversation...</span>
-                </div>
-              ) : threadMessages.length > 0 ? (
-                <div className="space-y-5 max-w-3xl mx-auto">
-                  {[...threadMessages].reverse().map((msg: any, idx: number) => {
-                    const fromAddr = (msg.from ?? [])[0] ?? {};
-                    const isVendor = fromAddr.email === selectedQuote.sender_email;
-                    const initials = (fromAddr.name || fromAddr.email || '??').substring(0, 2).toUpperCase();
-                    const dateStr = new Date(msg.date * 1000).toLocaleDateString('en-GB', {
-                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                    });
-
-                    return (
-                      <div key={msg.id} className="flex gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold shadow-sm ${isVendor ? 'bg-white border border-gray-200 text-gray-600' : 'bg-blue-600 text-white'}`}>
-                          {initials}
-                        </div>
-                        <div className={`flex-1 min-w-0 border rounded-xl p-4 shadow-sm ${isVendor ? 'bg-white border-gray-100' : 'bg-blue-50/40 border-blue-100'}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-gray-900">{fromAddr.name || fromAddr.email}</span>
-                              {isVendor && <span className="text-[9px] text-gray-400 font-bold uppercase px-1 py-0.5 bg-gray-50 rounded">Vendor</span>}
-                            </div>
-                            <span className="text-[10px] text-gray-400">{dateStr}</span>
-                          </div>
-                          {msg.subject && (
-                            <h4 className="text-xs font-semibold text-gray-800 mb-2">{msg.subject}</h4>
-                          )}
-                          <div
-                            className="text-sm text-gray-700 leading-relaxed email-body-content overflow-auto max-h-[300px]"
-                            dangerouslySetInnerHTML={{ __html: msg.body || '<em>No content</em>' }}
-                          />
-                          {/* Attachments with download */}
-                          {msg.attachments?.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5">
-                              {msg.attachments.map((att: any) => (
-                                <button
-                                  key={att.id}
-                                  onClick={() => handleDownloadAttachment(att, msg.id)}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors group/att text-left"
-                                >
-                                  <FileText className="w-3.5 h-3.5 text-gray-400 group-hover/att:text-blue-500 flex-shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[11px] font-medium text-gray-700 truncate">{att.filename}</p>
-                                    {att.size && <p className="text-[9px] text-gray-400">{att.size > 1024 * 1024 ? `${(att.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(att.size / 1024)} KB`}</p>}
-                                  </div>
-                                  <Download className="w-3 h-3 text-gray-300 opacity-0 group-hover/att:opacity-100 transition-opacity" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={threadEndRef} />
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-16 text-center opacity-50">
-                  <Mail className="w-8 h-8 text-gray-300 mb-3" />
-                  <h4 className="text-sm font-semibold text-gray-900 mb-1">No messages yet</h4>
-                  <p className="text-xs text-gray-500 max-w-[200px]">Send a negotiation message to start the thread.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Reply Area — Fixed Bottom */}
-            {readOnly ? (
-              <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex-shrink-0">
-                <div className="flex items-center justify-center gap-2 py-2 text-green-700">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="text-sm font-medium">This negotiation is closed. No further replies can be sent.</span>
-                </div>
-              </div>
-            ) : (
-              <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
-                <div className="max-w-3xl mx-auto">
-                  <textarea
-                    placeholder={`Reply to ${selectedQuote.vendor_name}…`}
-                    value={replyText}
-                    onChange={(e: any) => setReplyText(e.target.value)}
-                    disabled={isSending || !selectedQuote.thread_id}
-                    className="w-full h-24 p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none placeholder:text-gray-400 disabled:bg-gray-50"
-                  />
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-[9px] text-gray-400 italic">Insights update automatically after each reply.</p>
-                    <Button
-                      onClick={handleSendReply}
-                      disabled={isSending || !replyText.trim() || !selectedQuote.thread_id}
-                      className="bg-blue-600 text-white hover:bg-blue-700 px-5 h-9 text-xs shadow-sm"
-                    >
-                      {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-                      {isSending ? 'Sending…' : 'Send'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30">
-            <Users className="w-10 h-10 text-gray-200 mb-3" />
-            <h4 className="text-sm font-semibold text-gray-900 mb-1">Select a Vendor</h4>
-            <p className="text-xs text-gray-500 max-w-[220px] text-center">Choose a vendor from the list to view negotiation details and communicate.</p>
-          </div>
-        )}
-      </div>
-    </div>
-      )}
-
-      {/* Deal Closure Modal */}
-      {dealClosureOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
-          <div className="absolute inset-0 bg-black/50" onClick={() => !isExtractingDeal && setDealClosureOpen(false)} />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ zIndex: 1 }}>
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-gray-900">Finalise Deal Closure</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Select the vendor you want to award this contract to</p>
-                </div>
-              </div>
-              {!isExtractingDeal && (
-                <button onClick={() => setDealClosureOpen(false)} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-5 h-5" />
-                </button>
-              )}
-            </div>
-
-            {/* Vendor List */}
-            <div className="px-6 py-4 flex flex-col gap-2 max-h-64 overflow-y-auto">
-              {quotes.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No vendors in negotiation phase.</p>
-              ) : (
-                quotes.map((q: any) => (
-                  <button
-                    key={q.id}
-                    onClick={() => setClosureVendor(q)}
-                    disabled={isExtractingDeal}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left ${closureVendor?.id === q.id ? 'border-green-500 bg-green-50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}
-                  >
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${closureVendor?.id === q.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+              {quotes.map((q: any) => (
+                <button
+                  key={q.id}
+                  onClick={() => handleSelectQuote(q)}
+                  className={`w-full text-left px-4 py-3 transition-all ${selectedQuote?.id === q.id ? 'bg-blue-50 border-l-2 border-blue-600' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${selectedQuote?.id === q.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
                       {(q.vendor_name || 'V').substring(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{q.vendor_name}</p>
-                      <p className="text-xs text-gray-400">{q.sender_email}</p>
+                      <p className="text-xs font-semibold text-gray-900 truncate">{q.vendor_name}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{q.email_subject || q.sender_email}</p>
                     </div>
-                    {q.price != null && (
-                      <span className="text-sm font-bold text-gray-900 flex items-center gap-0.5">
-                        <IndianRupee className="w-3.5 h-3.5 text-gray-500" />
-                        {Number(q.price).toLocaleString('en-IN')}
-                      </span>
-                    )}
-                    {closureVendor?.id === q.id && <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}
-                  </button>
-                ))
-              )}
-            </div>
-
-            {/* Info note */}
-            <div className="mx-6 mb-4 px-4 py-3 bg-amber-50 border border-amber-100 rounded-lg">
-              <p className="text-xs text-amber-800 leading-relaxed">
-                <span className="font-bold">Note:</span> AI will extract final deal terms from all negotiation emails using Nova. All other tabs will become read-only after closure.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="px-6 pb-6 flex items-center justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setDealClosureOpen(false)}
-                disabled={isExtractingDeal}
-                className="text-sm"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmDealClosure}
-                disabled={!closureVendor || isExtractingDeal}
-                className="bg-green-600 text-white hover:bg-green-700 text-sm flex items-center gap-2 min-w-[160px]"
-              >
-                {isExtractingDeal ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Extracting deal terms…
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    Confirm Deal Closure
-                  </>
-                )}
-              </Button>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
-        </div>,
-        document.body
+
+          {/* Right Pane */}
+          <div className="col-span-9 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
+            {selectedQuote ? (
+              <>
+                {/* Compact Header */}
+                <div className="px-5 py-3 border-b border-gray-100 bg-white flex items-center justify-between flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-bold text-gray-900">{selectedQuote.vendor_name}</h3>
+                    <span className="text-[10px] text-gray-400">{selectedQuote.sender_email}</span>
+                  </div>
+                  <Badge className="bg-orange-100 text-orange-800 border-orange-200 px-2 py-0.5 text-[9px] uppercase font-bold tracking-wider">
+                    Negotiating
+                  </Badge>
+                </div>
+
+                {/* Collapsible AI Insights */}
+                <div className="border-b border-gray-100 flex-shrink-0">
+                  <button
+                    onClick={() => setInsightsOpen(!insightsOpen)}
+                    className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[10px] font-black text-gray-900 uppercase tracking-[0.15em]">AI Negotiation Insights</span>
+                      {isInsightsLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
+                    </div>
+                    {insightsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </button>
+
+                  {insightsOpen && (
+                    <div className="px-5 pb-4">
+                      {insights ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Price */}
+                          <div className="bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 rounded-lg p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <IndianRupee className="w-3 h-3 text-green-600" />
+                              <span className="text-[9px] font-bold text-green-800 uppercase tracking-wider">Price</span>
+                            </div>
+                            <p className="text-sm font-bold text-gray-900">{insights.price}</p>
+                          </div>
+                          {/* Delivery */}
+                          <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100/60 rounded-lg p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Clock className="w-3 h-3 text-blue-600" />
+                              <span className="text-[9px] font-bold text-blue-800 uppercase tracking-wider">Delivery</span>
+                            </div>
+                            <p className="text-sm font-bold text-gray-900">{insights.delivery_timeline}</p>
+                          </div>
+                          {/* Sentiment */}
+                          <div className={`rounded-lg p-3 ring-1 ${sentimentConfig[insights.sentiment]?.bg || sentimentConfig.neutral.bg}`}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <TrendingUp className="w-3 h-3 text-gray-600" />
+                              <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Vendor Sentiment</span>
+                            </div>
+                            <p className={`text-sm font-bold ${sentimentConfig[insights.sentiment]?.color || 'text-gray-900'}`}>
+                              {sentimentConfig[insights.sentiment]?.label || insights.sentiment}
+                            </p>
+                          </div>
+                          {/* Latest Change */}
+                          <div className="bg-gradient-to-br from-amber-50 to-yellow-50/50 border border-amber-100/60 rounded-lg p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <MessageSquare className="w-3 h-3 text-amber-600" />
+                              <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider">Latest Update</span>
+                            </div>
+                            <p className="text-xs text-gray-700 leading-relaxed">{insights.latest_change}</p>
+                          </div>
+                          {/* Key Terms */}
+                          {insights.key_terms?.length > 0 && (
+                            <div className="col-span-2 bg-gray-50/80 border border-gray-100 rounded-lg p-3">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <Shield className="w-3 h-3 text-gray-600" />
+                                <span className="text-[9px] font-bold text-gray-800 uppercase tracking-wider">Key Terms</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {insights.key_terms.map((term: string, i: number) => (
+                                  <span key={i} className="px-2 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-medium text-gray-700">
+                                    {term}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Summary */}
+                          <div className="col-span-2 bg-blue-50/50 border border-blue-100/50 rounded-lg p-3">
+                            <p className="text-xs text-gray-700 leading-relaxed italic">&ldquo;{insights.summary}&rdquo;</p>
+                          </div>
+                        </div>
+                      ) : isInsightsLoading ? (
+                        <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span className="text-xs">Analyzing negotiation thread...</span>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <p className="text-xs text-gray-400">Select a vendor with an active thread to see AI insights.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Thread Area — Scrollable */}
+                <div className="flex-1 overflow-y-auto px-5 py-5 bg-gray-50/20">
+                  {isThreadLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+                      <span className="text-xs">Loading conversation...</span>
+                    </div>
+                  ) : threadMessages.length > 0 ? (
+                    <div className="space-y-5 max-w-3xl mx-auto">
+                      {[...threadMessages].reverse().map((msg: any, idx: number) => {
+                        const fromAddr = (msg.from ?? [])[0] ?? {};
+                        const isVendor = fromAddr.email === selectedQuote.sender_email;
+                        const initials = (fromAddr.name || fromAddr.email || '??').substring(0, 2).toUpperCase();
+                        const dateStr = new Date(msg.date * 1000).toLocaleDateString('en-GB', {
+                          day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        });
+
+                        return (
+                          <div key={msg.id} className="flex gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold shadow-sm ${isVendor ? 'bg-white border border-gray-200 text-gray-600' : 'bg-blue-600 text-white'}`}>
+                              {initials}
+                            </div>
+                            <div className={`flex-1 min-w-0 border rounded-xl p-4 shadow-sm ${isVendor ? 'bg-white border-gray-100' : 'bg-blue-50/40 border-blue-100'}`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-gray-900">{fromAddr.name || fromAddr.email}</span>
+                                  {isVendor && <span className="text-[9px] text-gray-400 font-bold uppercase px-1 py-0.5 bg-gray-50 rounded">Vendor</span>}
+                                </div>
+                                <span className="text-[10px] text-gray-400">{dateStr}</span>
+                              </div>
+                              {msg.subject && (
+                                <h4 className="text-xs font-semibold text-gray-800 mb-2">{msg.subject}</h4>
+                              )}
+                              <div
+                                className="text-sm text-gray-700 leading-relaxed email-body-content overflow-auto max-h-[300px]"
+                                dangerouslySetInnerHTML={{ __html: msg.body || '<em>No content</em>' }}
+                              />
+                              {/* Attachments with download */}
+                              {msg.attachments?.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5">
+                                  {msg.attachments.map((att: any) => (
+                                    <button
+                                      key={att.id}
+                                      onClick={() => handleDownloadAttachment(att, msg.id)}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors group/att text-left"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-gray-400 group-hover/att:text-blue-500 flex-shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-medium text-gray-700 truncate">{att.filename}</p>
+                                        {att.size && <p className="text-[9px] text-gray-400">{att.size > 1024 * 1024 ? `${(att.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(att.size / 1024)} KB`}</p>}
+                                      </div>
+                                      <Download className="w-3 h-3 text-gray-300 opacity-0 group-hover/att:opacity-100 transition-opacity" />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={threadEndRef} />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-center opacity-50">
+                      <Mail className="w-8 h-8 text-gray-300 mb-3" />
+                      <h4 className="text-sm font-semibold text-gray-900 mb-1">No messages yet</h4>
+                      <p className="text-xs text-gray-500 max-w-[200px]">Send a negotiation message to start the thread.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Reply Area — Fixed Bottom */}
+                {
+                  readOnly ? (
+                    <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex-shrink-0">
+                      <div className="flex items-center justify-center gap-2 py-2 text-green-700">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">This negotiation is closed. No further replies can be sent.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+                      <div className="max-w-3xl mx-auto">
+                        <textarea
+                          placeholder={`Reply to ${selectedQuote.vendor_name}…`}
+                          value={replyText}
+                          onChange={(e: any) => setReplyText(e.target.value)}
+                          disabled={isSending || !selectedQuote.thread_id}
+                          className="w-full h-24 p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none placeholder:text-gray-400 disabled:bg-gray-50"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-[9px] text-gray-400 italic">Insights update automatically after each reply.</p>
+                          <Button
+                            onClick={handleSendReply}
+                            disabled={isSending || !replyText.trim() || !selectedQuote.thread_id}
+                            className="bg-blue-600 text-white hover:bg-blue-700 px-5 h-9 text-xs shadow-sm"
+                          >
+                            {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+                            {isSending ? 'Sending…' : 'Send'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30">
+                <Users className="w-10 h-10 text-gray-200 mb-3" />
+                <h4 className="text-sm font-semibold text-gray-900 mb-1">Select a Vendor</h4>
+                <p className="text-xs text-gray-500 max-w-[220px] text-center">Choose a vendor from the list to view negotiation details and communicate.</p>
+              </div>
+            )
+            }
+          </div >
+        </div >
       )}
+
+      {/* Deal Closure Modal */}
+      {
+        dealClosureOpen && createPortal(
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
+            <div className="absolute inset-0 bg-black/50" onClick={() => !isExtractingDeal && setDealClosureOpen(false)} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ zIndex: 1 }}>
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Finalise Deal Closure</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Select the vendor you want to award this contract to</p>
+                  </div>
+                </div>
+                {!isExtractingDeal && (
+                  <button onClick={() => setDealClosureOpen(false)} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Vendor List */}
+              <div className="px-6 py-4 flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {quotes.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">No vendors in negotiation phase.</p>
+                ) : (
+                  quotes.map((q: any) => (
+                    <button
+                      key={q.id}
+                      onClick={() => setClosureVendor(q)}
+                      disabled={isExtractingDeal}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left ${closureVendor?.id === q.id ? 'border-green-500 bg-green-50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${closureVendor?.id === q.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                        {(q.vendor_name || 'V').substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{q.vendor_name}</p>
+                        <p className="text-xs text-gray-400">{q.sender_email}</p>
+                      </div>
+                      {q.price != null && (
+                        <span className="text-sm font-bold text-gray-900 flex items-center gap-0.5">
+                          <IndianRupee className="w-3.5 h-3.5 text-gray-500" />
+                          {Number(q.price).toLocaleString('en-IN')}
+                        </span>
+                      )}
+                      {closureVendor?.id === q.id && <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Info note */}
+              <div className="mx-6 mb-4 px-4 py-3 bg-amber-50 border border-amber-100 rounded-lg">
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  <span className="font-bold">Note:</span> AI will extract final deal terms from all negotiation emails using Nova. All other tabs will become read-only after closure.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="px-6 pb-6 flex items-center justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setDealClosureOpen(false)}
+                  disabled={isExtractingDeal}
+                  className="text-sm"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmDealClosure}
+                  disabled={!closureVendor || isExtractingDeal}
+                  className="bg-green-600 text-white hover:bg-green-700 text-sm flex items-center gap-2 min-w-[160px]"
+                >
+                  {isExtractingDeal ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Extracting deal terms…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Confirm Deal Closure
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      }
     </>
   );
 }
