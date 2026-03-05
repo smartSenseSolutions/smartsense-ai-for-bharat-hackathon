@@ -1,6 +1,7 @@
 import asyncio
 import boto3
 import re
+from datetime import datetime
 from io import BytesIO
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -43,12 +44,19 @@ async def generate_rfp_draft(
     # Use LangChain's structured output with Pydantic
     structured_llm = llm.with_structured_output(RFPGenerateResponse)
 
+    today = datetime.now().strftime("%B %d, %Y")
     prompt = f"""
     You are an expert Procurement Officer AI. Generate a structured Request for Proposal (RFP) draft based on the following:
     
+    Current Date: {today}
     Project Name: {project_name}
     Key Requirements: {requirements}
     Language: {language}
+
+    CRITICAL DATE RULES:
+    1. All dates (timeline, deadlines) MUST be in 'DD-MM-YYYY' format. 
+    2. If a timeline is "30 days", calculate the date {today} + 30 days and return 'DD-MM-YYYY'.
+    3. Never use natural language like "1 month" or "6 weeks" for dates or timelines.
     """
 
     try:
@@ -94,6 +102,7 @@ GUIDELINES:
    - Set `is_complete` to true.
    - Reply affirmatively (e.g. "I have all the details needed. Generating your RFP now!").
    - Populate `rfp_data` with all the collected information. Generate relevant technical specifications and quality/compliance standards.
+   - DATE FORMATTING: All dates (rfp_deadline, delivery_timeline) MUST strictly be in 'DD-MM-YYYY' format. Do not use natural language. Use the current date provided to calculate relative timeframes.
    - For `costBornByRespondents`, securely generate a statement about how "All expenses incurred by Respondents in any way associated with the development, preparation and submission of a response... will be borne entirely and exclusively by the Respondent."
    - For `changesInScope`, generate a statement how the Company reserves the right to change, add or delete any part of this RFP.
    - For `clarificationOfSubmissions`, generate a statement how the Company may seek clarification from any Respondent at its sole discretion.
@@ -107,8 +116,12 @@ async def chat_rfp_assistant(project_name: str, messages: list[dict]) -> dict:
     `messages` is a list of {"role": "user"|"assistant", "content": "..."}.
     Returns {"reply": str, "is_complete": bool, "rfp_data": dict | None}.
     """
+    # Use current date for relative time calculations in the system prompt
+    today_str = datetime.now().strftime("%B %d, %Y")
+    full_system_prompt = f"{_CHAT_SYSTEM_PROMPT}\nCURRENT DATE: {today_str}\n"
+
     # Build LangChain message history
-    lc_messages = [SystemMessage(content=_CHAT_SYSTEM_PROMPT)]
+    lc_messages = [SystemMessage(content=full_system_prompt)]
 
     # Nova Lite (Bedrock Converse API) requires the first message to be from a user.
     # We must skip any leading assistant messages.

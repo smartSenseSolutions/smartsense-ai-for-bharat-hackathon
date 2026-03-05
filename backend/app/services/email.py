@@ -101,7 +101,7 @@ def _build_rfp_email_html(
         row("Product / Service", rfp_data.get("productName"))
         + row("Budget", rfp_data.get("budget"))
         + row("Delivery Timeline", rfp_data.get("deliveryTimeline"))
-        + row("Quotation Deadline", rfp_data.get("rfpDeadline"))
+        + row("RFP Deadline", rfp_data.get("rfpDeadline"))
     )
 
     return f"""

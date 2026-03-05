@@ -73,9 +73,10 @@ User Input: "{date_str}"
 
 Rules:
 1. Return ONLY the date in exactly 'dd-mm-yyyy' format.
-2. If given a relative time frame like 'in 30 days', calculate the date 30 days from the Current Date.
-3. If giving a relative time frame like '6 weeks', calculate the date 6 weeks from the Current Date.
-4. If it's completely impossible to determine any date, return null.
+2. If given a relative time frame like 'in 30 days' or 'next month', calculate the exact date from the Current Date.
+3. If given '1 year from now' or 'in 2 years', calculate the date by adding the corresponding years to the Current Date.
+4. Handle 'weeks', 'months', and 'years' precisely based on the Current Date.
+5. If it's completely impossible to determine any date, return null.
 """
         import asyncio
 
