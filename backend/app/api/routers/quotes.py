@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,6 +16,7 @@ from app.services.quotes import (
     generate_negotiation_email,
     generate_ai_recommendations,
     generate_negotiation_insights,
+    generate_deal_closure_extract,
 )
 from app.services.activity import log_activity
 
@@ -246,3 +248,29 @@ async def get_negotiation_insights(
         project_id=project_id,
     )
     return insights
+
+
+class DealClosureExtractRequest(BaseModel):
+    project_id: str
+    vendor_email: str
+    thread_id: str = ""
+    vendor_name: str = ""
+
+
+@router.post("/deal-closure-extract")
+async def extract_deal_closure(
+    request: DealClosureExtractRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Use Nova to extract final deal terms from negotiation and quotation emails.
+    Returns structured data to pre-populate the Closure Phase.
+    """
+    data = await generate_deal_closure_extract(
+        project_id=request.project_id,
+        vendor_email=request.vendor_email,
+        thread_id=request.thread_id,
+        vendor_name=request.vendor_name,
+        db=db,
+    )
+    return data

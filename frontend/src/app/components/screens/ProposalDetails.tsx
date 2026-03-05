@@ -50,6 +50,14 @@ interface ProposalDetailsProps {
 
 export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }: ProposalDetailsProps) {
   const [currentPhase, setCurrentPhase] = useState<'invite' | 'quotations' | 'ai-recommendation' | 'negotiations' | 'closure'>('invite');
+  const [dealClosed, setDealClosed] = useState(false);
+  const [closedDealData, setClosedDealData] = useState<any>(null);
+
+  const handleDealClosure = (vendor: any, extractedData: any) => {
+    setClosedDealData(extractedData);
+    setDealClosed(true);
+    setCurrentPhase('closure');
+  };
 
   const phases = [
     { id: 'invite', label: 'Invite', icon: Users },
@@ -85,20 +93,22 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
             const isActive = phase.id === currentPhase;
             const activeIndex = phases.findIndex(p => p.id === currentPhase);
             const isCompleted = index < activeIndex;
+            // When deal is closed, pre-closure phases are read-only (still navigable but locked)
+            const isReadOnly = dealClosed && phase.id !== 'closure';
 
             return (
               <div key={phase.id} className="flex items-center">
                 <button
                   onClick={() => setCurrentPhase(phase.id as any)}
-                  className="flex flex-col items-center gap-1.5 relative"
+                  className={`flex flex-col items-center gap-1.5 relative ${isReadOnly ? 'opacity-60' : ''}`}
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all relative z-10 ${isActive
                     ? 'bg-[#3B82F6] text-white'
-                    : isCompleted
+                    : isCompleted || (dealClosed && phase.id !== 'closure')
                       ? 'bg-[#3B82F6] text-white'
                       : 'bg-white border border-gray-200 text-gray-400'
                     }`}>
-                    <Icon className="w-3.5 h-3.5" />
+                    {dealClosed && phase.id !== 'closure' ? <CheckCircle className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
                   </div>
                   <span className={`text-xs whitespace-nowrap ${isActive
                     ? 'text-gray-900 font-medium'
@@ -112,7 +122,7 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
 
                 {/* Connecting Line */}
                 {index < phases.length - 1 && (
-                  <div className={`w-16 h-px mx-2 transition-all self-start mt-4 ${index < activeIndex
+                  <div className={`w-16 h-px mx-2 transition-all self-start mt-4 ${index < activeIndex || dealClosed
                     ? 'bg-[#3B82F6]'
                     : 'bg-gray-200'
                     }`} />
@@ -126,11 +136,11 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
       {/* Content */}
       <div className="overflow-y-auto max-h-[calc(100vh-250px)] hide-scrollbar">
         <div className="bg-white rounded-xl p-5">
-          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} onInvitesSent={() => setCurrentPhase('quotations')} />}
-          {currentPhase === 'quotations' && <QuotationsPhaseGmail proposal={proposal} />}
-          {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} onPhaseChange={setCurrentPhase} />}
-          {currentPhase === 'negotiations' && <NegotiationsPhase proposal={proposal} />}
-          {currentPhase === 'closure' && <ClosurePhase proposal={proposal} />}
+          {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} readOnly={dealClosed} />}
+          {currentPhase === 'quotations' && <QuotationsPhaseGmail proposal={proposal} readOnly={dealClosed} />}
+          {currentPhase === 'ai-recommendation' && <AIRecommendationPhase proposal={proposal} onPhaseChange={setCurrentPhase} readOnly={dealClosed} />}
+          {currentPhase === 'negotiations' && <NegotiationsPhase proposal={proposal} readOnly={dealClosed} onDealClosure={handleDealClosure} />}
+          {currentPhase === 'closure' && <ClosurePhase proposal={proposal} dealData={closedDealData} />}
         </div>
       </div>
     </div>
@@ -147,7 +157,7 @@ interface InvitedVendorRecord {
   invited_at: string;
 }
 
-function InvitePhase({ proposal, onStatusChange, onInvitesSent }: { proposal: any, onStatusChange?: (status: string) => void, onInvitesSent?: () => void }) {
+function InvitePhase({ proposal, onStatusChange, onInvitesSent, readOnly }: { proposal: any, onStatusChange?: (status: string) => void, onInvitesSent?: () => void, readOnly?: boolean }) {
   const [activeTab, setActiveTab] = useState<'search' | 'invited'>('search');
   const [invitedVendorsList, setInvitedVendorsList] = useState<InvitedVendorRecord[]>([]);
   const [isLoadingInvited, setIsLoadingInvited] = useState(false);
@@ -201,7 +211,7 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent }: { proposal: an
     }
   }, [proposal?.id]);
 
-  const fireRFPSearch = (rfpData: any) => {
+  const fireRFPSearch = async (rfpData: any) => {
     if (!rfpData) return;
 
     console.log('[RFP Search] rfpData being sent:', JSON.stringify(rfpData).slice(0, 500));
@@ -219,26 +229,53 @@ function InvitePhase({ proposal, onStatusChange, onInvitesSent }: { proposal: an
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    fetch(`${API_BASE}/api/search/vendors/smart/rfp`, {
+    // Step 1: extract intent (fast LLM call) to get the search query
+    let extractedQuery = "RFP-driven search";
+    try {
+      const intentRes = await fetch(`${API_BASE}/api/search/vendors/smart/rfp/intent`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ rfp_data: rfpData }),
+      });
+      if (intentRes.ok) {
+        const intentData = await intentRes.json();
+        extractedQuery = intentData.query || extractedQuery;
+      }
+    } catch (err) {
+      console.error('RFP intent extraction failed:', err);
+    }
+
+    setSubmittedQuery(extractedQuery);
+    setSearchQuery(extractedQuery);
+
+    // Step 2: fire internal and external searches in parallel with the extracted query
+    fetch(`${API_BASE}/api/search/vendors/smart/internal`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ rfp_data: rfpData }),
+      body: JSON.stringify({ query: extractedQuery }),
     })
-      .then(res => res.ok ? res.json() : { results: [], query: "RFP-driven search" })
+      .then(res => res.ok ? res.json() : { results: [] })
       .then(data => {
-        setSubmittedQuery(data.query || "RFP-driven search");
-        setSearchQuery(data.query || "");
-
-        // Backend returns combined results
-        const all = data.results ?? [];
-        setInternalResults(all.filter((r: any) => r.source === 'internal'));
-        setExternalResults(all.filter((r: any) => r.source === 'external'));
+        setInternalResults(data.results ?? []);
         setIsInternalLoading(false);
+      })
+      .catch(err => {
+        console.error('Internal search failed:', err);
+        setIsInternalLoading(false);
+      });
+
+    fetch(`${API_BASE}/api/search/vendors/smart/external`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: extractedQuery }),
+    })
+      .then(res => res.ok ? res.json() : { results: [] })
+      .then(data => {
+        setExternalResults(data.results ?? []);
         setIsExternalLoading(false);
       })
       .catch(err => {
-        console.error('RFP search failed:', err);
-        setIsInternalLoading(false);
+        console.error('External search failed:', err);
         setIsExternalLoading(false);
       });
   };
@@ -1702,7 +1739,7 @@ function QuotationsPhase({ proposal }: { proposal: any }) {
 }
 
 // AI Recommendation Phase Component
-function AIRecommendationPhase({ proposal, onPhaseChange }: { proposal: any, onPhaseChange?: (phase: any) => void }) {
+function AIRecommendationPhase({ proposal, onPhaseChange, readOnly }: { proposal: any, onPhaseChange?: (phase: any) => void, readOnly?: boolean }) {
   const [hoveredVendor, setHoveredVendor] = useState<string | null>(null);
   const [emailPanelVendor, setEmailPanelVendor] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
@@ -2229,7 +2266,11 @@ function AIRecommendationPhase({ proposal, onPhaseChange }: { proposal: any, onP
 }
 
 // Negotiations Phase Component
-function NegotiationsPhase({ proposal }: { proposal: any }): any {
+function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
+  proposal: any;
+  readOnly?: boolean;
+  onDealClosure?: (vendor: any, extractedData: any) => void;
+}): any {
   const [quotes, setQuotes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
@@ -2241,6 +2282,10 @@ function NegotiationsPhase({ proposal }: { proposal: any }): any {
   const [isInsightsLoading, setIsInsightsLoading] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(true);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const [negotiationTab, setNegotiationTab] = useState<'email' | 'voice'>('email');
+  const [dealClosureOpen, setDealClosureOpen] = useState(false);
+  const [closureVendor, setClosureVendor] = useState<any>(null);
+  const [isExtractingDeal, setIsExtractingDeal] = useState(false);
 
   const projectId = proposal?.id?.startsWith('RFP-')
     ? proposal.id.replace('RFP-', '')
@@ -2405,6 +2450,35 @@ function NegotiationsPhase({ proposal }: { proposal: any }): any {
     aggressive: { color: 'text-red-700', bg: 'bg-red-50 ring-red-200', label: '🔥 Aggressive' },
   };
 
+  const handleConfirmDealClosure = async () => {
+    if (!closureVendor) return;
+    setIsExtractingDeal(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_BASE}/api/quotes/deal-closure-extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          vendor_email: closureVendor.sender_email,
+          thread_id: closureVendor.thread_id || '',
+          vendor_name: closureVendor.vendor_name || '',
+        }),
+      });
+      const data = res.ok ? await res.json() : {};
+      toast.success(`Deal closed with ${closureVendor.vendor_name || closureVendor.sender_email}`);
+      setDealClosureOpen(false);
+      onDealClosure?.(closureVendor, data);
+    } catch {
+      toast.error('Failed to extract deal data. Please try again.');
+    } finally {
+      setIsExtractingDeal(false);
+    }
+  };
+
   if (isLoading && quotes.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -2425,7 +2499,57 @@ function NegotiationsPhase({ proposal }: { proposal: any }): any {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-5 h-[calc(100vh-280px)]">
+    <>
+      {/* Sub-tabs + Deal Closure button */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setNegotiationTab('email')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${negotiationTab === 'email' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Email Negotiations
+          </button>
+          <button
+            onClick={() => setNegotiationTab('voice')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${negotiationTab === 'voice' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            AI Voice Negotiations
+            <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-bold rounded uppercase tracking-wider">
+              Coming Soon
+            </span>
+          </button>
+        </div>
+        {readOnly ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            <span className="text-sm font-medium text-green-700">Deal Closed</span>
+          </div>
+        ) : (
+          <Button
+            onClick={() => { setClosureVendor(selectedQuote || (quotes.length === 1 ? quotes[0] : null)); setDealClosureOpen(true); }}
+            className="bg-green-600 text-white hover:bg-green-700 h-9 px-4 text-sm flex items-center gap-2 shadow-sm"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Deal Closure
+          </Button>
+        )}
+      </div>
+
+      {negotiationTab === 'voice' ? (
+        <div className="flex flex-col items-center justify-center py-24 bg-gradient-to-br from-gray-50 to-blue-50/30 rounded-xl border border-dashed border-gray-200">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mb-4">
+            <Phone className="w-8 h-8 text-blue-500" />
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-lg font-semibold text-gray-900">AI Voice Negotiations</h3>
+            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-full uppercase tracking-wider">Coming Soon</span>
+          </div>
+          <p className="text-sm text-gray-500 max-w-sm text-center leading-relaxed">
+            Automated AI-powered voice calls to negotiate with vendors on your behalf — pricing, timelines, and terms, all handled by AI.
+          </p>
+        </div>
+      ) : (
+    <div className="grid grid-cols-12 gap-5 h-[calc(100vh-330px)]">
       {/* Left Pane: Vendor List */}
       <div className="col-span-3 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
@@ -2627,28 +2751,37 @@ function NegotiationsPhase({ proposal }: { proposal: any }): any {
             </div>
 
             {/* Reply Area — Fixed Bottom */}
-            <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
-              <div className="max-w-3xl mx-auto">
-                <textarea
-                  placeholder={`Reply to ${selectedQuote.vendor_name}…`}
-                  value={replyText}
-                  onChange={(e: any) => setReplyText(e.target.value)}
-                  disabled={isSending || !selectedQuote.thread_id}
-                  className="w-full h-24 p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none placeholder:text-gray-400 disabled:bg-gray-50"
-                />
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-[9px] text-gray-400 italic">Insights update automatically after each reply.</p>
-                  <Button
-                    onClick={handleSendReply}
-                    disabled={isSending || !replyText.trim() || !selectedQuote.thread_id}
-                    className="bg-blue-600 text-white hover:bg-blue-700 px-5 h-9 text-xs shadow-sm"
-                  >
-                    {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-                    {isSending ? 'Sending…' : 'Send'}
-                  </Button>
+            {readOnly ? (
+              <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex-shrink-0">
+                <div className="flex items-center justify-center gap-2 py-2 text-green-700">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">This negotiation is closed. No further replies can be sent.</span>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+                <div className="max-w-3xl mx-auto">
+                  <textarea
+                    placeholder={`Reply to ${selectedQuote.vendor_name}…`}
+                    value={replyText}
+                    onChange={(e: any) => setReplyText(e.target.value)}
+                    disabled={isSending || !selectedQuote.thread_id}
+                    className="w-full h-24 p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none placeholder:text-gray-400 disabled:bg-gray-50"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-[9px] text-gray-400 italic">Insights update automatically after each reply.</p>
+                    <Button
+                      onClick={handleSendReply}
+                      disabled={isSending || !replyText.trim() || !selectedQuote.thread_id}
+                      className="bg-blue-600 text-white hover:bg-blue-700 px-5 h-9 text-xs shadow-sm"
+                    >
+                      {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+                      {isSending ? 'Sending…' : 'Send'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30">
@@ -2659,6 +2792,102 @@ function NegotiationsPhase({ proposal }: { proposal: any }): any {
         )}
       </div>
     </div>
+      )}
+
+      {/* Deal Closure Modal */}
+      {dealClosureOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
+          <div className="absolute inset-0 bg-black/50" onClick={() => !isExtractingDeal && setDealClosureOpen(false)} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ zIndex: 1 }}>
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Finalise Deal Closure</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Select the vendor you want to award this contract to</p>
+                </div>
+              </div>
+              {!isExtractingDeal && (
+                <button onClick={() => setDealClosureOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Vendor List */}
+            <div className="px-6 py-4 flex flex-col gap-2 max-h-64 overflow-y-auto">
+              {quotes.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">No vendors in negotiation phase.</p>
+              ) : (
+                quotes.map((q: any) => (
+                  <button
+                    key={q.id}
+                    onClick={() => setClosureVendor(q)}
+                    disabled={isExtractingDeal}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left ${closureVendor?.id === q.id ? 'border-green-500 bg-green-50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${closureVendor?.id === q.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      {(q.vendor_name || 'V').substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{q.vendor_name}</p>
+                      <p className="text-xs text-gray-400">{q.sender_email}</p>
+                    </div>
+                    {q.price != null && (
+                      <span className="text-sm font-bold text-gray-900 flex items-center gap-0.5">
+                        <IndianRupee className="w-3.5 h-3.5 text-gray-500" />
+                        {Number(q.price).toLocaleString('en-IN')}
+                      </span>
+                    )}
+                    {closureVendor?.id === q.id && <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Info note */}
+            <div className="mx-6 mb-4 px-4 py-3 bg-amber-50 border border-amber-100 rounded-lg">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                <span className="font-bold">Note:</span> AI will extract final deal terms from all negotiation emails using Nova. All other tabs will become read-only after closure.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 flex items-center justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setDealClosureOpen(false)}
+                disabled={isExtractingDeal}
+                className="text-sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmDealClosure}
+                disabled={!closureVendor || isExtractingDeal}
+                className="bg-green-600 text-white hover:bg-green-700 text-sm flex items-center gap-2 min-w-[160px]"
+              >
+                {isExtractingDeal ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Extracting deal terms…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Confirm Deal Closure
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 

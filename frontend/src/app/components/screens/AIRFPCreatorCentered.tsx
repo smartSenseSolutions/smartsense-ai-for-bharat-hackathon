@@ -1068,7 +1068,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
           <div className="border-t border-gray-100 bg-white px-6 py-4 rounded-b-2xl flex justify-end gap-3">
             <Button
               onClick={() => {
-                onSaveAsDraft?.({ projectName: projectName || 'Untitled Project', ...rfpData });
+                onSaveAsDraft?.({ projectName: projectName || 'Untitled Project', ...rfpData, contactEmail: userEmail });
               }}
               disabled={!projectName.trim() || !rfpGenerated}
               className="h-12 px-6 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 disabled:opacity-50 text-sm font-medium"
@@ -1092,7 +1092,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
         onClose={() => setShowConfirmDialog(false)}
         onConfirm={() => {
           setShowConfirmDialog(false);
-          onSendForApproval({ projectName: projectName || 'Untitled Project', ...rfpData });
+          onSendForApproval({ projectName: projectName || 'Untitled Project', ...rfpData, contactEmail: userEmail });
         }}
         title="Publish RFP?"
         description={`Are you sure you want to publish "${projectName || 'Untitled Project'}"? It will no longer be editable once published.`}

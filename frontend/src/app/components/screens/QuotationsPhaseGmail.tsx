@@ -45,7 +45,7 @@ function FileIcon({ contentType, filename, className }: { contentType: string; f
 }
 
 // Quotations Phase Component with Gmail-style UI
-export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
+export function QuotationsPhaseGmail({ proposal, readOnly }: { proposal: any; readOnly?: boolean }) {
   const [emailThreadOpen, setEmailThreadOpen] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -244,6 +244,12 @@ export function QuotationsPhaseGmail({ proposal }: { proposal: any }) {
 
   return (
     <>
+      {readOnly && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-lg mb-4 text-sm text-amber-800">
+          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
+          <span>This phase is read-only. Deal has been closed.</span>
+        </div>
+      )}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>

@@ -360,12 +360,20 @@ async def generate_ai_recommendations(
     llm = get_llm(settings.BEDROCK_NOVA_MODEL_ID)
     structured_llm = llm.with_structured_output(AIRecommendationsResponse)
 
+    # DB formatted Baseline
+    rfp_delivery_timeline = (
+        project.delivery_timeline.strftime("%d-%m-%Y")
+        if hasattr(project, "delivery_timeline") and project.delivery_timeline
+        else project.rfp_data.get("deliveryTimeline", "N/A")
+    )
+    rfp_budget = project.rfp_data.get("budget", "N/A") if project.rfp_data else "N/A"
+
     system_prompt = f"""
     You are an expert AI Procurement Officer for the project "{project.project_name}".
     
     BASE REQUIREMENTS:
     - Evidence: Use "Vendor Submissions".
-    - Baseline: Use "RFP Details" (Budget: {project.rfp_data.get("budget", "N/A")}, Timeline: {project.rfp_data.get("deliveryTimeline", "N/A")}).
+    - Baseline: Use "RFP Details" (Budget: {rfp_budget}, Timeline: {rfp_delivery_timeline}).
     
     STRICT SCORING RUBRIC (0-100) - NO EXCEPTIONS:
     1. **Price Competitiveness**: 100 for lowest, 90-100 for under budget. Over budget: 85 - 1pt per 2% over.
@@ -373,7 +381,7 @@ async def generate_ai_recommendations(
        - 100 if and only if (Bulk/Production timeline) <= RFP Baseline.
        - If Bulk timeline NOT found, use Trial timeline but note it's non-standard.
        - PENALTY: YOU MUST DEDUCT 10 points for every WEEK of delay. 
-       - If RFP is "2 weeks" and Vendor is "30-45 days" (6 weeks), the delay is 4 weeks. Score MUST be ~60. 
+       - If RFP is "{rfp_delivery_timeline}" and Vendor is "30-45 days" (6 weeks), the delay is 4 weeks. Score MUST be ~60. 
        - NEVER award 100 for a delivery that exceeds the baseline.
     3. **Quality/Warranty/Compliance**: 100 (full evidence), 50 (partial), 0 (none/missing).
     
@@ -439,9 +447,9 @@ async def generate_ai_recommendations(
         log_activity(
             db,
             type="ai_recommendation",
-            title=f"AI recommendations generated",
+            title="AI recommendations generated",
             description=f"Generated for project: {project.project_name}",
-            project_id=project_id
+            project_id=project_id,
         )
 
         return res_dict
@@ -541,6 +549,232 @@ RULES:
     except Exception as e:
         print(f"[Neg Insights] LLM error: {e}")
         return _default_insights(vendor_name, len(messages))
+
+
+async def generate_deal_closure_extract(
+    project_id: str, vendor_email: str, thread_id: str, vendor_name: str, db
+) -> dict:
+    """
+    Use Nova to extract final agreed deal terms from all negotiation and quotation emails.
+    Returns structured closure data to pre-populate the Closure Phase.
+    """
+    from app.models.domain import Project, Quote
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    # sender_email is stored inside sla_details JSON, so filter in Python
+    all_quotes = (
+        db.query(Quote)
+        .filter(Quote.project_id == project_id)
+        .order_by(Quote.created_at.desc())
+        .all()
+    )
+    quote = next(
+        (
+            q
+            for q in all_quotes
+            if (q.sla_details or {}).get("sender_email") == vendor_email
+        ),
+        all_quotes[0] if all_quotes else None,
+    )
+
+    # Build email transcript and structured thread for frontend rendering
+    transcript_parts = []
+    email_thread = []
+    if thread_id:
+        try:
+            messages = list_thread_messages(
+                thread_id, project_id=project_id, vendor_email=vendor_email
+            )
+            for msg in messages:
+                from_list = msg.get("from") or [{}]
+                from_entry = (
+                    from_list[0] if isinstance(from_list, list) and from_list else {}
+                )
+                from_name = (
+                    from_entry.get("name") or from_entry.get("email") or "Unknown"
+                )
+                from_email = from_entry.get("email") or ""
+                to_list = msg.get("to") or []
+                to_emails = [t.get("email", "") for t in to_list if isinstance(t, dict)]
+
+                body_html = msg.get("body", "") or ""
+                body_text = clean_html(body_html)
+                if len(body_text) > 3000:
+                    body_text = body_text[:3000] + "... [truncated]"
+                transcript_parts.append(f"From: {from_name}\n{body_text}")
+
+                # Build structured message for frontend (cap body_html size)
+                attachments = []
+                for att in msg.get("attachments") or []:
+                    attachments.append(
+                        {
+                            "id": att.get("id", ""),
+                            "filename": att.get("filename", "attachment"),
+                            "content_type": att.get("content_type", ""),
+                            "size": att.get("size", 0),
+                            "message_id": msg.get("id", ""),
+                        }
+                    )
+
+                email_thread.append(
+                    {
+                        "id": msg.get("id", ""),
+                        "from_name": from_name,
+                        "from_email": from_email,
+                        "to_emails": to_emails,
+                        "subject": msg.get("subject", ""),
+                        "body_html": body_html[:8000]
+                        if len(body_html) > 8000
+                        else body_html,
+                        "body_text": body_text,
+                        "date": msg.get("date", 0),
+                        "is_vendor": from_email.lower() == vendor_email.lower(),
+                        "attachments": attachments,
+                    }
+                )
+        except Exception as e:
+            print(f"[Deal Closure] Thread fetch error: {e}")
+
+    transcript = (
+        "\n---\n".join(transcript_parts)
+        if transcript_parts
+        else "No email thread available."
+    )
+
+    # Build quote context
+    original_price = None
+    quote_context = ""
+    if quote:
+        original_price = float(quote.price) if quote.price else None
+        sla = quote.sla_details or {}
+        quote_context = (
+            f"Quote Record:\n"
+            f"- Original Price: {quote.price} {quote.currency or 'INR'}\n"
+            f"- Delivery Timeline: {sla.get('delivery_timeline', 'N/A')}\n"
+            f"- Notes: {sla.get('notes', 'N/A')}"
+        )
+
+    project_name = project.project_name if project else "Unknown"
+    rfp_budget = (
+        project.rfp_data.get("budget", "N/A") if project and project.rfp_data else "N/A"
+    )
+
+    llm = get_llm(settings.BEDROCK_NOVA_MODEL_ID)
+
+    prompt = f"""You are an expert procurement analyst finalizing a deal with vendor "{vendor_name}" ({vendor_email}).
+
+Project: {project_name}
+RFP Budget: {rfp_budget}
+{quote_context}
+
+EMAIL THREAD (complete negotiation history):
+{transcript}
+
+Based on all the negotiation and quotation emails above, extract the final agreed deal terms.
+Return ONLY valid JSON with these exact keys:
+{{
+  "final_price": <number or null>,
+  "original_price": <number or null>,
+  "currency": "INR",
+  "delivery_days": <number or null>,
+  "delivery_milestones": [
+    {{"phase": "<phase name>", "duration": "<e.g. 5 days>", "estimated_date": "<date string or null>"}}
+  ],
+  "warranty": "<warranty terms or 'Not mentioned'>",
+  "payment_terms": "<payment terms or 'Not mentioned'>",
+  "payment_schedule": [
+    {{"milestone": "<name>", "percentage": <number>, "dueDate": "<date string or ''>"}}
+  ],
+  "certifications": ["<cert1>", "<cert2>"],
+  "key_terms": ["<term1>", "<term2>"],
+  "summary": "<1-2 sentence deal summary>",
+  "vendor_location": "<city, state if mentioned or ''>",
+  "vendor_contact": "<phone number if mentioned or ''>",
+  "contact_person": "<name of vendor's contact person if mentioned or ''>",
+  "contract_start_date": "<contract start date if mentioned or ''>",
+  "contract_end_date": "<contract end date or duration if mentioned or ''>"
+}}
+RULES:
+- Extract from ACTUAL email content only.
+- If information is not found, use null for numbers and empty string for strings.
+- delivery_milestones: list the logical phases (e.g. Order Processing, Manufacturing, Shipping, Delivery). Include duration and any dates mentioned.
+- payment_schedule: reflect any milestone/installment structure discussed (e.g. 30% advance, 50% on delivery).
+- certifications: list any quality/compliance certs mentioned (ISO, CE, FDA, GMP, etc.).
+- key_terms: important negotiated conditions like warranty, SLA, training, spare parts, etc.
+- Return ONLY the JSON object, no markdown."""
+
+    try:
+        response = await asyncio.to_thread(llm.invoke, prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        result = json.loads(content)
+
+        final_price = result.get("final_price")
+        orig_price = result.get("original_price") or original_price
+        savings = None
+        savings_pct = None
+        if final_price and orig_price and orig_price > final_price:
+            savings = round(orig_price - final_price, 2)
+            savings_pct = round((savings / orig_price) * 100, 1)
+
+        return {
+            "vendor_name": vendor_name,
+            "vendor_email": vendor_email,
+            "final_price": final_price,
+            "original_price": orig_price,
+            "savings": savings,
+            "savings_percentage": savings_pct,
+            "currency": result.get("currency", "INR"),
+            "delivery_days": result.get("delivery_days"),
+            "delivery_milestones": result.get("delivery_milestones", []),
+            "warranty": result.get("warranty", ""),
+            "payment_terms": result.get("payment_terms", ""),
+            "payment_schedule": result.get("payment_schedule", []),
+            "certifications": result.get("certifications", []),
+            "key_terms": result.get("key_terms", []),
+            "summary": result.get("summary", ""),
+            "vendor_location": result.get("vendor_location", ""),
+            "vendor_contact": result.get("vendor_contact", ""),
+            "contact_person": result.get("contact_person", ""),
+            "contract_start_date": result.get("contract_start_date", ""),
+            "contract_end_date": result.get("contract_end_date", ""),
+            "thread_id": thread_id,
+            "email_thread": email_thread,
+            "message_count": len(email_thread),
+        }
+    except Exception as e:
+        print(f"[Deal Closure] LLM error: {e}")
+        return {
+            "vendor_name": vendor_name,
+            "vendor_email": vendor_email,
+            "final_price": original_price,
+            "original_price": original_price,
+            "savings": None,
+            "savings_percentage": None,
+            "currency": "INR",
+            "delivery_days": None,
+            "delivery_milestones": [],
+            "warranty": "",
+            "payment_terms": "",
+            "payment_schedule": [],
+            "certifications": [],
+            "key_terms": [],
+            "summary": "",
+            "vendor_location": "",
+            "vendor_contact": "",
+            "contact_person": "",
+            "contract_start_date": "",
+            "contract_end_date": "",
+            "thread_id": thread_id,
+            "email_thread": email_thread,
+            "message_count": len(email_thread),
+        }
 
 
 def _default_insights(vendor_name: str, message_count: int = 0) -> dict:

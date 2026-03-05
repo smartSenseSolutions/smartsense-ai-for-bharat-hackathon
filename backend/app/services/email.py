@@ -84,76 +84,52 @@ def _build_rfp_email_html(
     project_id: str,
     rfp_data: dict,
 ) -> str:
-    """Build a professional HTML email body for RFP distribution."""
+    """Build a concise HTML email body for RFP distribution."""
 
     def row(label: str, value) -> str:
-        if value is None:
+        if not value:
             return ""
         return (
             f"<tr>"
             f"<td style='padding:8px 12px;font-weight:600;color:#374151;"
-            f"background:#F9FAFB;width:200px;border:1px solid #E5E7EB'>{label}</td>"
+            f"background:#F9FAFB;width:180px;border:1px solid #E5E7EB'>{label}</td>"
             f"<td style='padding:8px 12px;color:#1F2937;border:1px solid #E5E7EB'>{value}</td>"
             f"</tr>"
         )
 
-    detail_rows = ""
-    field_labels = {
-        "product_service": "Product / Service",
-        "quantity": "Quantity / Scope",
-        "timeline": "Delivery Timeline",
-        "budget": "Budget (INR)",
-        "deadline": "Quotation Deadline",
-        "description": "Description",
-        "requirements": "Requirements",
-        "technical_specs": "Technical Specifications",
-        "terms": "Terms & Conditions",
-    }
-    for key, label in field_labels.items():
-        detail_rows += row(label, rfp_data.get(key))
-
-    # Any extra keys not in the map
-    for key, value in rfp_data.items():
-        if key not in field_labels and value:
-            detail_rows += row(key.replace("_", " ").title(), value)
+    detail_rows = (
+        row("Product / Service", rfp_data.get("productName"))
+        + row("Budget", rfp_data.get("budget"))
+        + row("Delivery Timeline", rfp_data.get("deliveryTimeline"))
+        + row("Quotation Deadline", rfp_data.get("rfpDeadline"))
+    )
 
     return f"""
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family:Arial,sans-serif;background:#F3F4F6;padding:32px 0;margin:0">
-  <div style="max-width:640px;margin:0 auto;background:#FFFFFF;border-radius:8px;
+  <div style="max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:8px;
               overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
 
-    <!-- Header -->
-    <div style="background:#3B82F6;padding:24px 32px">
-      <h1 style="color:#FFFFFF;margin:0;font-size:20px;font-weight:700">
-        Request for Proposal
+    <div style="background:#3B82F6;padding:20px 28px">
+      <h1 style="color:#FFFFFF;margin:0;font-size:18px;font-weight:700">
+        Request for Proposal &mdash; {project_name}
       </h1>
-      <p style="color:#BFDBFE;margin:4px 0 0;font-size:14px">
-        Procure AI &mdash; Procurement Management Platform
-      </p>
+      <p style="color:#BFDBFE;margin:4px 0 0;font-size:13px">Ref: RFP-{project_id}</p>
     </div>
 
-    <!-- Body -->
-    <div style="padding:32px">
+    <div style="padding:28px">
       <p style="color:#1F2937;margin:0 0 16px">Dear <strong>{vendor_name}</strong>,</p>
-      <p style="color:#4B5563;line-height:1.6;margin:0 0 24px">
-        We are pleased to invite you to submit a quotation for the following
-        procurement requirement. Please review the details below and reply to this
-        email with your best offer, including unit price, total price, delivery
-        timeline, and any applicable terms.
+      <p style="color:#4B5563;line-height:1.6;margin:0 0 20px">
+        Please find the attached RFP document for <strong>{project_name}</strong>.
+        Review the requirements and reply to this email with your quotation.
       </p>
 
-      <!-- RFP Details -->
-      <h2 style="color:#1F2937;font-size:16px;margin:0 0 12px">
-        Project: {project_name}
-      </h2>
       <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
         {detail_rows}
       </table>
 
-      <!-- Instructions -->
       <div style="background:#EFF6FF;border-left:4px solid #3B82F6;
                   padding:16px;border-radius:4px;margin-bottom:24px">
         <p style="color:#1E40AF;margin:0;font-weight:600;font-size:14px">
@@ -168,23 +144,16 @@ def _build_rfp_email_html(
         </ul>
       </div>
 
-      <p style="color:#4B5563;font-size:14px;line-height:1.6">
-        If you have any questions, feel free to reply to this email.
-        We look forward to receiving your proposal.
-      </p>
-
-      <p style="color:#1F2937;margin:24px 0 0">
+      <p style="color:#1F2937;margin:0">
         Best regards,<br>
         <strong>Procurement Team</strong><br>
-        <span style="color:#6B7280;font-size:13px">Procure AI Platform</span>
+        <span style="color:#6B7280;font-size:13px">Procure AI</span>
       </p>
     </div>
 
-    <!-- Footer -->
-    <div style="background:#F9FAFB;padding:16px 32px;border-top:1px solid #E5E7EB">
+    <div style="background:#F9FAFB;padding:12px 28px;border-top:1px solid #E5E7EB">
       <p style="color:#9CA3AF;font-size:12px;margin:0">
-        Reference: RFP-{project_id} &bull;
-        This email was sent via Procure AI. Do not forward this RFP to third parties.
+        Sent via Procure AI &bull; Do not forward to third parties.
       </p>
     </div>
   </div>

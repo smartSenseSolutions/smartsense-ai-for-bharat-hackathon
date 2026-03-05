@@ -23,10 +23,29 @@ from app.services.search import (
     search_vendors_hybrid,
     search_gemini_vendors,
     search_vendors_by_rfp_intent,
+    QueryIntent,
 )
+from app.models.domain import Project
 from app.services.activity import log_activity
 
 router = APIRouter(prefix="/api/search", tags=["Search"])
+
+
+@router.post("/vendors/smart/rfp/intent")
+async def extract_rfp_intent(request: VendorRFPSearchRequest):
+    """
+    Extract search intent from RFP data only (no vendor search).
+    Returns the derived query string for use by the client to fire
+    internal and external searches independently.
+    """
+    if not request.rfp_data:
+        raise HTTPException(status_code=400, detail="RFP data must not be empty")
+    try:
+        intent = await search_vendors_by_rfp_intent(request.rfp_data)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=503, detail=f"Intent extraction failed: {e}")
+    return {"query": intent.search_text}
 
 
 @router.post("/vendors/smart/rfp", response_model=VendorSmartSearchResponse)
@@ -38,10 +57,26 @@ async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
         raise HTTPException(status_code=400, detail="RFP data must not be empty")
 
     try:
-        # 1. Extract intent using Nova
-        print(f"[search-rfp] Received rfp_data keys: {list(request.rfp_data.keys())}")
-        intent = await search_vendors_by_rfp_intent(request.rfp_data)
-        print(f"[search-rfp] Extracted intent text: {intent.search_text}")
+        # 1. Extract intent using DB if possible, otherwise Nova
+        intent = None
+        db = next(get_db())
+
+        if request.rfp_data and request.rfp_data.get("id"):
+            project = (
+                db.query(Project)
+                .filter(Project.id == request.rfp_data.get("id"))
+                .first()
+            )
+            if project and project.search_intent:
+                intent = QueryIntent(**project.search_intent)
+                print(
+                    f"[search-rfp] Found pre-extracted intent in DB text: {intent.search_text}"
+                )
+
+        if not intent:
+            print("[search-rfp] Pre-extracted intent not found, falling back to Nova")
+            intent = await search_vendors_by_rfp_intent(request.rfp_data)
+            print(f"[search-rfp] Extracted intent text: {intent.search_text}")
 
         # 2. Run internal hybrid search and External Gemini search concurrently
         internal_raw, external_raw = await asyncio.gather(
@@ -82,14 +117,14 @@ async def smart_search_vendors_rfp(request: VendorRFPSearchRequest):
         query=intent.search_text,
         top_n=settings.VENDOR_SEARCH_TOP_N,
     )
-    
+
     # Log activity
     db = next(get_db())
     log_activity(
         db,
         type="vendor_search",
         title=f"Marketplace search performed",
-        description=f"RFP-driven search for project: {request.rfp_data.get('projectName', 'Unknown')}"
+        description=f"RFP-driven search for project: {request.rfp_data.get('projectName', 'Unknown')}",
     )
 
     return response
@@ -159,7 +194,7 @@ async def smart_search_vendors(request: VendorSmartSearchRequest):
         db,
         type="vendor_search",
         title=f"Marketplace search performed",
-        description=f"Query: {request.query}"
+        description=f"Query: {request.query}",
     )
 
     return response

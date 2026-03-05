@@ -1,7 +1,6 @@
 import asyncio
 import boto3
 import re
-import uuid
 from io import BytesIO
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -53,7 +52,9 @@ async def generate_rfp_draft(
     """
 
     try:
-        response: RFPGenerateResponse = await asyncio.to_thread(structured_llm.invoke, prompt)
+        response: RFPGenerateResponse = await asyncio.to_thread(
+            structured_llm.invoke, prompt
+        )
         return response.model_dump()
     except Exception as e:
         print(f"Error generating RFP with LangChain Bedrock: {e}")
@@ -133,7 +134,9 @@ async def chat_rfp_assistant(project_name: str, messages: list[dict]) -> dict:
     structured_llm = llm.with_structured_output(RFPChatResponse)
 
     try:
-        response: RFPChatResponse = await asyncio.to_thread(structured_llm.invoke, lc_messages)
+        response: RFPChatResponse = await asyncio.to_thread(
+            structured_llm.invoke, lc_messages
+        )
         return response.model_dump()
 
     except Exception as exc:
@@ -229,7 +232,7 @@ def generate_rfp_pdf(
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.lib.enums import TA_LEFT
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -253,7 +256,6 @@ def generate_rfp_pdf(
         Table,
         TableStyle,
         HRFlowable,
-        KeepTogether,
     )
 
     buffer = BytesIO()
@@ -277,7 +279,6 @@ def generate_rfp_pdf(
     gray200 = colors.HexColor("#E5E7EB")
     gray100 = colors.HexColor("#F3F4F6")
     gray50 = colors.HexColor("#F9FAFB")
-    blue600 = colors.HexColor("#2563EB")
 
     def sty(name, **kw):
         return ParagraphStyle(name, parent=base["Normal"], **kw)
@@ -339,30 +340,48 @@ def generate_rfp_pdf(
 
     story = []
 
-    label_sty = sty("L", fontSize=8, fontName=_FONT_BOLD, textColor=gray500, alignment=TA_LEFT)
-    meta_sty = sty("M", fontSize=8, fontName=_FONT, textColor=gray500, alignment=TA_LEFT)
-    meta_sty_bold = sty("MB", fontSize=9, fontName=_FONT_BOLD, textColor=gray900, alignment=TA_LEFT)
+    label_sty = sty(
+        "L", fontSize=8, fontName=_FONT_BOLD, textColor=gray500, alignment=TA_LEFT
+    )
+    meta_sty = sty(
+        "M", fontSize=8, fontName=_FONT, textColor=gray500, alignment=TA_LEFT
+    )
+    meta_sty_bold = sty(
+        "MB", fontSize=9, fontName=_FONT_BOLD, textColor=gray900, alignment=TA_LEFT
+    )
 
     meta_story = [
         Paragraph("DOCUMENT NO.", label_sty),
         Paragraph(h(rfp_data.get("documentNo", "")), meta_sty_bold),
         Paragraph(h(rfp_data.get("documentDate", "")), meta_sty),
     ]
-    
+
     # Header Table: Title on left, Meta on right (now also left aligned content)
-    header_table = Table([
+    header_table = Table(
         [
             [
-                Paragraph(h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")), title_sty),
-                Paragraph(h(project_name or rfp_data.get("projectName", "")), sub_sty),
-            ],
-            meta_story
-        ]
-    ], colWidths=[W - 5*cm, 5*cm])
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-    ]))
+                [
+                    Paragraph(
+                        h(rfp_data.get("documentTitle", "REQUEST FOR PROPOSAL")),
+                        title_sty,
+                    ),
+                    Paragraph(
+                        h(project_name or rfp_data.get("projectName", "")), sub_sty
+                    ),
+                ],
+                meta_story,
+            ]
+        ],
+        colWidths=[W - 5 * cm, 5 * cm],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ]
+        )
+    )
     story.append(header_table)
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=0.75, color=gray200, spaceAfter=15))
@@ -529,9 +548,17 @@ def generate_rfp_pdf(
 
     # ── Contact Information ──────────────────────────────────────────────────
     story.append(section("11. CONTACT INFORMATION"))
-    story.append(Paragraph("For any queries or clarifications regarding this RFP, please contact:", body_sty))
+    story.append(
+        Paragraph(
+            "For any queries or clarifications regarding this RFP, please contact:",
+            body_sty,
+        )
+    )
     contact_rows = [
-        ["Procurement Department", h(rfp_data.get("contactEmail", "procurement@company.com"))]
+        [
+            "Procurement Department",
+            h(rfp_data.get("contactEmail", "procurement@company.com")),
+        ]
     ]
     ctat = Table(
         [
