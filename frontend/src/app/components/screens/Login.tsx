@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { API_BASE } from '@/app/config';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
+
 
 interface LoginUser {
   id: string;

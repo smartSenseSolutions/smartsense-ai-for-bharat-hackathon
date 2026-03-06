@@ -11,8 +11,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import type { Screen } from '@/app/App';
+import { API_BASE } from '@/app/config';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
+
 
 // ---------------------------------------------------------------------------
 // Types

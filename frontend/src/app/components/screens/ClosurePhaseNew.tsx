@@ -3,8 +3,10 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { API_BASE } from '@/app/config';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
+
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '';
@@ -50,21 +52,21 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
   const paymentSchedule: { milestone: string; percentage: number; amount: number; dueDate: string }[] =
     dealData?.payment_schedule?.length > 0
       ? dealData.payment_schedule.map((s: any) => ({
-          milestone: s.milestone || 'Payment',
-          percentage: s.percentage ?? 0,
-          amount: finalPrice ? Math.round((finalPrice * (s.percentage ?? 0)) / 100) : 0,
-          dueDate: s.dueDate || s.due_date || 'To be confirmed',
-        }))
+        milestone: s.milestone || 'Payment',
+        percentage: s.percentage ?? 0,
+        amount: finalPrice ? Math.round((finalPrice * (s.percentage ?? 0)) / 100) : 0,
+        dueDate: s.dueDate || s.due_date || 'To be confirmed',
+      }))
       : [];
 
   // Delivery milestones
   const deliveryMilestones: { phase: string; duration: string; date: string }[] =
     dealData?.delivery_milestones?.length > 0
       ? dealData.delivery_milestones.map((m: any) => ({
-          phase: m.phase || 'Phase',
-          duration: m.duration || '',
-          date: m.estimated_date || m.date || '',
-        }))
+        phase: m.phase || 'Phase',
+        duration: m.duration || '',
+        date: m.estimated_date || m.date || '',
+      }))
       : [];
 
   // Closed-by from localStorage user
@@ -78,10 +80,10 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
   // Latest message date for the thread row
   const latestMsgDate = emailThread.length > 0
     ? (() => {
-        const latest = emailThread.reduce((a: any, b: any) => (b.date || 0) > (a.date || 0) ? b : a);
-        if (!latest.date) return '';
-        return new Date(latest.date * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      })()
+      const latest = emailThread.reduce((a: any, b: any) => (b.date || 0) > (a.date || 0) ? b : a);
+      if (!latest.date) return '';
+      return new Date(latest.date * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    })()
     : '';
 
   const handleDownloadAttachment = async (att: any) => {
@@ -120,7 +122,7 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
       {dealData && (
         <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg mb-5">
           <div className="w-5 h-5 mt-0.5 flex-shrink-0 text-blue-600">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z" /></svg>
           </div>
           <div className="flex-1">
             <p className="text-xs font-semibold text-blue-800">Deal terms extracted by AI (Amazon Nova)</p>

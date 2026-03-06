@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
+import { API_BASE } from './config';
+
 import { Login } from '@/app/components/screens/Login';
 import { Bell, Globe, FileText, MessageSquare, TrendingUp, AlertCircle, CheckCircle, Clock, Users, Package } from 'lucide-react';
 import { Sidebar } from '@/app/components/Sidebar';
@@ -106,7 +108,8 @@ export default function App() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const API_URL = API_BASE;
+
 
   // Settings state
   const [settingsFullName, setSettingsFullName] = useState(authUser?.full_name || '');

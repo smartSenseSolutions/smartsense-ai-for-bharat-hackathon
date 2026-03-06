@@ -4,6 +4,8 @@ import { Badge } from '@/app/components/ui/badge';
 
 import type { Screen } from '@/app/App';
 import { useState, useEffect } from 'react';
+import { API_BASE } from '@/app/config';
+
 
 interface DashboardProps {
   userName?: string;
@@ -44,8 +46,8 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
     const fetchData = async () => {
       try {
         const [statsRes, activitiesRes] = await Promise.all([
-          fetch('http://localhost:8000/api/stats/dashboard'),
-          fetch('http://localhost:8000/api/activities')
+          fetch(`${API_BASE}/api/stats/dashboard`),
+          fetch(`${API_BASE}/api/activities`)
         ]);
 
         if (statsRes.ok) {

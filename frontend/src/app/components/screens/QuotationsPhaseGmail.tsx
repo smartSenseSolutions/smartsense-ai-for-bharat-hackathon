@@ -4,8 +4,10 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { API_BASE } from '@/app/config';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
+
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '';

@@ -9,6 +9,8 @@ import { Input } from '@/app/components/ui/input';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { QuotationsPhaseGmail } from '@/app/components/screens/QuotationsPhaseGmail';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
+import { API_BASE } from '@/app/config';
+
 
 
 interface CertificateDetail {
@@ -40,7 +42,7 @@ interface AIVendorResult {
   vector_score: number;
 }
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
 
 interface ProposalDetailsProps {
   proposal: any;

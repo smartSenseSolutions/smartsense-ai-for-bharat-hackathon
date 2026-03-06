@@ -5,6 +5,8 @@ import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import type { Screen } from '@/app/App';
+import { API_BASE } from '@/app/config';
+
 
 interface CertificateDetail {
   document_type: string;
@@ -72,7 +74,7 @@ const AnimatedCounter = ({ value, duration = 3000 }: { value: number; duration?:
   return <>{count.toLocaleString()}</>;
 };
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
 
 export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: VendorMarketProps) {
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
