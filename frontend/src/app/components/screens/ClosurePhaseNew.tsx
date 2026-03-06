@@ -3,8 +3,10 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { API_BASE } from '@/app/config';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
+
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '';
@@ -22,7 +24,6 @@ function formatUnixDate(unix: number): string {
 
 // Closure Phase Component
 export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?: any }) {
-  const [emailThreadOpen, setEmailThreadOpen] = useState(false);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
 
   // Derive display values — always prefer AI-extracted data, fall back to meaningful placeholders
@@ -43,8 +44,6 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
   const summary = dealData?.summary || '';
   const contractStartDate = dealData?.contract_start_date || 'To be confirmed';
   const contractEndDate = dealData?.contract_end_date || 'To be confirmed';
-  const messageCount: number = dealData?.message_count || 0;
-  const emailThread: any[] = dealData?.email_thread || [];
 
   // Payment schedule
   const paymentSchedule: { milestone: string; percentage: number; amount: number; dueDate: string }[] =
@@ -72,47 +71,23 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
   const closedBy = closedByRaw ? (() => { try { const u = JSON.parse(closedByRaw); return u.email || u.name || 'Procurement Team'; } catch { return 'Procurement Team'; } })() : 'Procurement Team';
   const closedDate = new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Total attachments count across thread
-  const totalAttachments = emailThread.reduce((sum: number, m: any) => sum + (m.attachments?.length || 0), 0);
-
-  // Latest message date for the thread row
-  const latestMsgDate = emailThread.length > 0
-    ? (() => {
-      const latest = emailThread.reduce((a: any, b: any) => (b.date || 0) > (a.date || 0) ? b : a);
-      if (!latest.date) return '';
-      return new Date(latest.date * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    })()
-    : '';
-
-  const handleDownloadAttachment = async (att: any) => {
-    const token = localStorage.getItem('auth_token');
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/email/attachments/${att.id}?message_id=${att.message_id}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-      );
-      if (!res.ok) throw new Error('Download failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = att.filename || 'attachment';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      /* silently ignore */
-    }
-  };
 
   return (
-    <div>
+    <div className="h-[calc(100vh-140px)] overflow-y-auto px-8 py-6 pb-20 scrollbar-hide">
+      <style>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Procurement Completed</h2>
-          <p className="text-sm text-gray-500">Deal successfully closed — summary extracted from negotiation emails</p>
+          <p className="text-sm text-gray-500">Deal successfully closed — summary of finalized terms</p>
         </div>
       </div>
 
@@ -153,7 +128,7 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
               ) : (
                 <>
                   <p className="text-xs text-gray-600">Savings</p>
-                  <p className="text-sm font-medium text-gray-500 mt-0.5">Could not be determined from emails</p>
+                  <p className="text-sm font-medium text-gray-500 mt-0.5">Not specified in final agreement</p>
                 </>
               )}
             </div>
@@ -263,7 +238,7 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
               <p className="text-xs text-gray-500">Delivery Timeline</p>
               {deliveryDays != null
                 ? <p className="text-sm font-medium text-gray-900">{deliveryDays} days from PO</p>
-                : <p className="text-sm text-gray-400 italic">Not mentioned in emails</p>}
+                : <p className="text-sm text-gray-400 italic">Not specified</p>}
             </div>
             {deliveryDays != null && (
               <div>
@@ -285,151 +260,6 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
         </div>
       </div>
 
-      {/* Deal Closure Communication */}
-      <div className="border border-[#eeeff1] rounded-lg p-4 mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-          <Mail className="w-4 h-4" />
-          Deal Closure Communication
-        </h3>
-
-        {emailThread.length > 0 ? (
-          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-            <div
-              onClick={() => setEmailThreadOpen(true)}
-              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                    <span className="text-sm font-medium text-blue-700">
-                      {(contactPerson || vendorName).substring(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-0.5">
-                    <span className="text-sm font-semibold text-gray-900">
-                      {contactPerson ? `${contactPerson} — ` : ''}{vendorName}
-                    </span>
-                    <Badge className="bg-green-50 text-green-700 border-0 text-xs px-1.5 py-0">Closed</Badge>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-1.5 truncate">
-                    {emailThread[emailThread.length - 1]?.subject || 'Negotiation & closure thread'}
-                  </p>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5" />
-                      {messageCount} message{messageCount !== 1 ? 's' : ''}
-                    </span>
-                    {finalPrice != null && (
-                      <span className="flex items-center gap-1">
-                        <IndianRupee className="w-3.5 h-3.5" />
-                        {finalPrice.toLocaleString('en-IN')}
-                      </span>
-                    )}
-                    {totalAttachments > 0 && (
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3.5 h-3.5" />
-                        {totalAttachments} attachment{totalAttachments !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {latestMsgDate && (
-                  <div className="flex-shrink-0 text-xs text-gray-400">{latestMsgDate}</div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">
-            <Mail className="w-7 h-7 text-gray-300 mb-2" />
-            <p className="text-sm text-gray-500">No email thread available</p>
-            <p className="text-xs text-gray-400 mt-0.5">The negotiation thread could not be loaded for this vendor.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Email Thread Side Panel */}
-      {emailThreadOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
-          <div className="absolute inset-0 bg-black/50" onClick={() => setEmailThreadOpen(false)} />
-          <div className="absolute top-0 right-0 h-full w-[700px] bg-white shadow-xl flex flex-col" style={{ zIndex: 1 }}>
-            {/* Header */}
-            <div className="bg-white border-b border-[#eeeff1] px-6 py-4 flex items-center justify-between flex-shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Deal Closure Communication</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {vendorEmail}{contactPerson ? ` · ${contactPerson}` : ''}
-                  <span className="ml-2 text-gray-400">· Read only</span>
-                </p>
-              </div>
-              <button onClick={() => setEmailThreadOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Thread */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-8 bg-gray-50/20">
-              {[...emailThread].reverse().map((msg: any) => {
-                const initials = (msg.from_name || '?').substring(0, 2).toUpperCase();
-                const dateStr = formatUnixDate(msg.date);
-                return (
-                  <div key={msg.id} className="flex gap-3">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold shadow-sm ${msg.is_vendor ? 'bg-white border border-gray-200 text-gray-600' : 'bg-blue-600 text-white'}`}>
-                      {initials}
-                    </div>
-                    <div className={`flex-1 min-w-0 border rounded-xl p-4 shadow-sm ${msg.is_vendor ? 'bg-white border-gray-100' : 'bg-blue-50/40 border-blue-100'}`}>
-                      <div className="flex items-baseline justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-gray-900">{msg.from_name}</span>
-                          <span className="text-[9px] text-gray-400">{msg.from_email}</span>
-                          {msg.is_vendor && (
-                            <span className="text-[9px] text-gray-500 font-bold uppercase px-1 py-0.5 bg-gray-50 rounded">Vendor</span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0">{dateStr}</span>
-                      </div>
-                      {msg.to_emails?.length > 0 && (
-                        <p className="text-[10px] text-gray-400 mb-2">to {msg.to_emails.join(', ')}</p>
-                      )}
-                      {msg.subject && (
-                        <h4 className="text-xs font-semibold text-gray-800 mb-3">{msg.subject}</h4>
-                      )}
-                      {msg.body_html ? (
-                        <div
-                          className="text-sm text-gray-700 leading-relaxed overflow-auto max-h-[350px] email-body-content"
-                          dangerouslySetInnerHTML={{ __html: msg.body_html }}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{msg.body_text}</p>
-                      )}
-                      {msg.attachments?.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5">
-                          {msg.attachments.map((att: any, i: number) => (
-                            <button
-                              key={i}
-                              onClick={() => handleDownloadAttachment(att)}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                            >
-                              <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-700 truncate">{att.filename}</p>
-                                {att.size > 0 && <p className="text-[10px] text-gray-400">{formatBytes(att.size)}</p>}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
       {/* Payment Schedule & Delivery Milestones */}
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -467,8 +297,8 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50 rounded-lg">
               <IndianRupee className="w-6 h-6 text-gray-300 mb-2" />
-              <p className="text-sm text-gray-500">No payment schedule found in emails</p>
-              <p className="text-xs text-gray-400 mt-0.5">Payment milestones were not discussed in the negotiation thread.</p>
+              <p className="text-sm text-gray-500">No payment schedule specified</p>
+              <p className="text-xs text-gray-400 mt-0.5">Payment milestones were not defined for this deal.</p>
             </div>
           )}
         </div>
@@ -502,8 +332,8 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50 rounded-lg">
               <Calendar className="w-6 h-6 text-gray-300 mb-2" />
-              <p className="text-sm text-gray-500">No delivery milestones found in emails</p>
-              <p className="text-xs text-gray-400 mt-0.5">Delivery phases were not discussed in the negotiation thread.</p>
+              <p className="text-sm text-gray-500">No delivery milestones specified</p>
+              <p className="text-xs text-gray-400 mt-0.5">Delivery phases were not defined for this deal.</p>
             </div>
           )}
         </div>
@@ -541,7 +371,7 @@ export function ClosurePhase({ proposal, dealData }: { proposal: any; dealData?:
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Certifications Mentioned in Emails</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Vendor Certifications</h3>
                 <div className="flex flex-wrap gap-2">
                   {certifications.map((cert, idx) => (
                     <Badge key={idx} className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100">

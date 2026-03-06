@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     OPENSEARCH_URL: Optional[str] = None
     OPENSEARCH_USER: Optional[str] = None
     OPENSEARCH_PASSWORD: Optional[str] = None
-    OPENSEARCH_INDEX: str = "vendor-documents"
+    OPENSEARCH_INDEX: str = "vendors"
     VENDOR_INDEX_NAME: str = "vendors"
 
     S3_BUCKET_NAME: Optional[str] = None
@@ -64,14 +64,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def set_dynamic_names(self):
-        # Only append environment if it hasn't been appended already
-        if not self.VENDOR_INDEX_NAME.endswith(f"-{self.ENVIRONMENT}"):
-            self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}-{self.ENVIRONMENT}"
-            # self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}"
-
+        # We now take these from .env, so we don't need to append environment or hardcode them here.
         if self.DATABASE_URL and not self.DATABASE_URL.endswith(f"_{self.ENVIRONMENT}"):
-            self.DATABASE_URL = f"{self.DATABASE_URL}_{self.ENVIRONMENT}"
-            # self.DATABASE_URL = f"{self.DATABASE_URL}"
+            # self.DATABASE_URL = f"{self.DATABASE_URL}_{self.ENVIRONMENT}"
+            self.DATABASE_URL = f"{self.DATABASE_URL}"
 
         return self
 

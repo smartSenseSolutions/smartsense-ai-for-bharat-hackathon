@@ -1,8 +1,10 @@
-import { Package, CheckCircle, IndianRupee, MapPin, Calendar, ChevronRight, ArrowLeft, Search } from 'lucide-react';
+import { Package, CheckCircle, IndianRupee, MapPin, Calendar, ChevronRight, ArrowLeft, Search, Sparkles } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import type { Screen } from '@/app/App';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
+import { API_BASE } from '@/app/config';
 
 interface OrdersHistoryProps {
   onNavigate: (screen: Screen) => void;
@@ -10,139 +12,25 @@ interface OrdersHistoryProps {
 
 export function OrdersHistory({ onNavigate }: OrdersHistoryProps) {
   const [selectedClosure, setSelectedClosure] = useState<any | null>(null);
+  const [closedOrders, setClosedOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const closedOrders = [
-    {
-      id: 'PO-2026-0047',
-      projectName: 'Medical Equipment Procurement - Q1 2026',
-      vendor: 'Global Electronics Supply',
-      location: 'Mumbai, Maharashtra',
-      totalValue: 9285000,
-      closedDate: '23 Jan 2026',
-      deliveryDate: '18 Mar 2026',
-      status: 'Completed',
-      category: 'Medical Devices',
-      savings: 700000,
-      savingsPercentage: 7,
-    },
-    {
-      id: 'PO-2026-0042',
-      projectName: 'Pharmaceutical Raw Materials - Batch 12',
-      vendor: 'PharmaChem Industries',
-      location: 'Hyderabad, Telangana',
-      totalValue: 5450000,
-      closedDate: '20 Jan 2026',
-      deliveryDate: '5 Mar 2026',
-      status: 'Completed',
-      category: 'Pharmaceuticals',
-      savings: 425000,
-      savingsPercentage: 8,
-    },
-    {
-      id: 'PO-2026-0038',
-      projectName: 'Laboratory Equipment Upgrade',
-      vendor: 'Scientific Solutions Pvt Ltd',
-      location: 'Bengaluru, Karnataka',
-      totalValue: 7820000,
-      closedDate: '18 Jan 2026',
-      deliveryDate: '28 Feb 2026',
-      status: 'Completed',
-      category: 'Lab Equipment',
-      savings: 580000,
-      savingsPercentage: 7,
-    },
-    {
-      id: 'PO-2026-0035',
-      projectName: 'Diagnostic Reagents Supply - Annual Contract',
-      vendor: 'BioTech Diagnostics',
-      location: 'Pune, Maharashtra',
-      totalValue: 12500000,
-      closedDate: '15 Jan 2026',
-      deliveryDate: '20 Feb 2026',
-      status: 'Completed',
-      category: 'Diagnostics',
-      savings: 950000,
-      savingsPercentage: 8,
-    },
-    {
-      id: 'PO-2026-0031',
-      projectName: 'Surgical Instruments Procurement',
-      vendor: 'MediTech Instruments',
-      location: 'Chennai, Tamil Nadu',
-      totalValue: 4680000,
-      closedDate: '12 Jan 2026',
-      deliveryDate: '15 Feb 2026',
-      status: 'Completed',
-      category: 'Surgical Equipment',
-      savings: 320000,
-      savingsPercentage: 6,
-    },
-    {
-      id: 'PO-2026-0028',
-      projectName: 'Hospital Furniture & Fixtures',
-      vendor: 'HealthCare Solutions Ltd',
-      location: 'Delhi, NCR',
-      totalValue: 3250000,
-      closedDate: '10 Jan 2026',
-      deliveryDate: '10 Feb 2026',
-      status: 'Completed',
-      category: 'Furniture',
-      savings: 275000,
-      savingsPercentage: 8,
-    },
-    {
-      id: 'PO-2026-0024',
-      projectName: 'Medical Imaging Supplies',
-      vendor: 'ImageCare Technologies',
-      location: 'Kolkata, West Bengal',
-      totalValue: 8950000,
-      closedDate: '8 Jan 2026',
-      deliveryDate: '8 Feb 2026',
-      status: 'Completed',
-      category: 'Imaging',
-      savings: 650000,
-      savingsPercentage: 7,
-    },
-    {
-      id: 'PO-2026-0019',
-      projectName: 'Patient Monitoring Systems',
-      vendor: 'VitalCare Electronics',
-      location: 'Ahmedabad, Gujarat',
-      totalValue: 11200000,
-      closedDate: '5 Jan 2026',
-      deliveryDate: '5 Feb 2026',
-      status: 'Completed',
-      category: 'Monitoring Systems',
-      savings: 880000,
-      savingsPercentage: 8,
-    },
-    {
-      id: 'PO-2026-0015',
-      projectName: 'Sterilization Equipment',
-      vendor: 'SteriliTech Solutions',
-      location: 'Jaipur, Rajasthan',
-      totalValue: 6750000,
-      closedDate: '3 Jan 2026',
-      deliveryDate: '1 Feb 2026',
-      status: 'Completed',
-      category: 'Sterilization',
-      savings: 475000,
-      savingsPercentage: 7,
-    },
-    {
-      id: 'PO-2026-0012',
-      projectName: 'Clinical Laboratory Consumables',
-      vendor: 'LabSupply India',
-      location: 'Lucknow, Uttar Pradesh',
-      totalValue: 2850000,
-      closedDate: '1 Jan 2026',
-      deliveryDate: '25 Jan 2026',
-      status: 'Completed',
-      category: 'Consumables',
-      savings: 215000,
-      savingsPercentage: 8,
-    },
-  ];
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/projects/history`);
+        if (response.ok) {
+          const data = await response.json();
+          setClosedOrders(data);
+        }
+      } catch (error) {
+        console.error('Error fetching closures history:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   if (selectedClosure) {
     return (
@@ -163,10 +51,43 @@ export function OrdersHistory({ onNavigate }: OrdersHistoryProps) {
         </div>
 
         {/* Closure Phase Content */}
-        <ClosurePhase proposal={selectedClosure} />
+        <ClosurePhase proposal={selectedClosure} dealData={selectedClosure.fullData} />
       </div>
     );
   }
+
+  const LoadingSkeleton = () => (
+    <div className="space-y-4">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bg-white border border-[#eeeff1] rounded-lg p-6 animate-pulse">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-6 w-64 bg-gray-100 rounded-md"></div>
+                <div className="h-5 w-20 bg-green-50 rounded-full"></div>
+              </div>
+              <div className="grid grid-cols-4 gap-6 mb-4">
+                {[1, 2, 3, 4].map((j) => (
+                  <div key={j}>
+                    <div className="h-3 w-16 bg-gray-50 rounded mb-1"></div>
+                    <div className="h-4 w-24 bg-gray-100 rounded"></div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-6">
+                {[1, 2, 3, 4].map((j) => (
+                  <div key={j}>
+                    <div className="h-3 w-16 bg-gray-50 rounded mb-1"></div>
+                    <div className="h-4 w-24 bg-gray-100 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen">
@@ -178,10 +99,12 @@ export function OrdersHistory({ onNavigate }: OrdersHistoryProps) {
               <h1 className="text-2xl font-semibold text-gray-900">Closures</h1>
               <p className="text-sm text-gray-500 mt-1">View all completed procurement closures</p>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg border border-green-200">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-medium text-green-700">{closedOrders.length} Completed</span>
-            </div>
+            {!loading && closedOrders.length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg border border-green-200">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-700">{closedOrders.length} Completed</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -200,85 +123,132 @@ export function OrdersHistory({ onNavigate }: OrdersHistoryProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4">
-          {closedOrders.map((order) => (
-            <button
-              key={order.id}
-              onClick={() => setSelectedClosure(order)}
-              className="w-full text-left bg-white border border-[#eeeff1] rounded-lg p-6 hover:border-[#3B82F6] transition-all group"
+        <AnimatePresence mode="wait">
+          {loading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h3 className="text-base font-semibold text-gray-900">{order.projectName}</h3>
-                    <Badge className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border-0">
-                      {order.status}
-                    </Badge>
+              <div className="flex items-center justify-center py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-blue-100 rounded-full animate-spin border-t-blue-500"></div>
+                    <Sparkles className="w-5 h-5 text-blue-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
                   </div>
-                  
-                  <div className="grid grid-cols-4 gap-6 mb-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">PO Number</p>
-                      <p className="text-sm font-medium text-gray-900">{order.id}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Vendor</p>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-gray-900">{order.vendor}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Location</p>
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                        <p className="text-sm text-gray-700">{order.location}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Category</p>
-                      <p className="text-sm text-gray-700">{order.category}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-6">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Total Value</p>
-                      <div className="flex items-center gap-1">
-                        <IndianRupee className="w-3.5 h-3.5 text-gray-700" />
-                        <p className="text-sm font-semibold text-gray-900">
-                          {order.totalValue.toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Savings</p>
-                      <div className="flex items-center gap-1">
-                        <IndianRupee className="w-3.5 h-3.5 text-green-600" />
-                        <p className="text-sm font-semibold text-green-600">
-                          {order.savings.toLocaleString('en-IN')} ({order.savingsPercentage}%)
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Closed Date</p>
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        <p className="text-sm text-gray-700">{order.closedDate}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Expected Delivery</p>
-                      <div className="flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5 text-gray-400" />
-                        <p className="text-sm text-gray-700">{order.deliveryDate}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <p className="text-sm font-medium text-gray-500">Fetching closed deals...</p>
                 </div>
               </div>
-            </button>
-          ))}
-        </div>
+              <LoadingSkeleton />
+            </motion.div>
+          ) : closedOrders.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200"
+            >
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                <Package className="w-8 h-8 text-gray-300" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">No closed deals found</h3>
+              <p className="text-sm text-gray-500 mt-1 max-w-xs text-center">
+                Completed projects will appear here once the deals are finalized.
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ staggerChildren: 0.1 }}
+              className="grid grid-cols-1 gap-4"
+            >
+              {closedOrders.map((order, index) => (
+                <motion.button
+                  key={order.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  onClick={() => setSelectedClosure(order)}
+                  className="w-full text-left bg-white border border-[#eeeff1] rounded-lg p-6 hover:border-[#3B82F6] hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <h3 className="text-base font-semibold text-gray-900">{order.projectName}</h3>
+                        <Badge className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border-0">
+                          {order.status}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-6 mb-4">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">PO Number</p>
+                          <p className="text-sm font-medium text-gray-900">{order.id}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Vendor</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium text-gray-900">{order.vendor}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Location</p>
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                            <p className="text-sm text-gray-700">{order.location}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Category</p>
+                          <p className="text-sm text-gray-700">{order.category}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-6">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Total Value</p>
+                          <div className="flex items-center gap-1">
+                            <IndianRupee className="w-3.5 h-3.5 text-gray-700" />
+                            <p className="text-sm font-semibold text-gray-900">
+                              {order.totalValue?.toLocaleString('en-IN') || '0'}
+                            </p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Savings</p>
+                          <div className="flex items-center gap-1">
+                            <IndianRupee className="w-3.5 h-3.5 text-green-600" />
+                            <p className="text-sm font-semibold text-green-600">
+                              {order.savings?.toLocaleString('en-IN') || '0'} ({order.savingsPercentage}%)
+                            </p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Closed Date</p>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                            <p className="text-sm text-gray-700">{order.closedDate}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Expected Delivery</p>
+                          <div className="flex items-center gap-1.5">
+                            <Package className="w-3.5 h-3.5 text-gray-400" />
+                            <p className="text-sm text-gray-700">{order.deliveryDate}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                  </div>
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

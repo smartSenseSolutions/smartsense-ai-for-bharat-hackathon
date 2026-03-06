@@ -9,6 +9,8 @@ import { Input } from '@/app/components/ui/input';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { QuotationsPhaseGmail } from '@/app/components/screens/QuotationsPhaseGmail';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
+import { API_BASE } from '@/app/config';
+
 
 
 interface CertificateDetail {
@@ -40,7 +42,7 @@ interface AIVendorResult {
   vector_score: number;
 }
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
 
 interface ProposalDetailsProps {
   proposal: any;
@@ -837,7 +839,7 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
                   {isExternalLoading && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Gemini is researching the web...
+                      Procure AI is researching the web...
                     </div>
                   )}
                 </div>

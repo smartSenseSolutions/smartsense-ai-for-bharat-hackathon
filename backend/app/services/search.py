@@ -326,14 +326,11 @@ def _rrf_fuse(
 
 
 async def search_vendors_hybrid(
-    query: Optional[str] = None, intent: Optional[QueryIntent] = None
+    intent: QueryIntent,
+    top_n: int = settings.VENDOR_SEARCH_TOP_N,
 ) -> list[dict]:
     """
-    Three-phase hybrid search over the vendors OpenSearch index.
-
-    Phase 0 — Query Decomposition:
-        If `intent` is not provided, a fast Gemini call converts the natural
-        language `query` into structured intent.
+    Three-phase hybrid search over the vendor OpenSearch index (configured via VENDOR_INDEX_NAME).
 
     Phase 1 — Vector (kNN):
         Embed `intent.search_text` and retrieve top candidates.

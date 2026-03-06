@@ -73,7 +73,7 @@ VENDOR_INDEX_NAME = settings.VENDOR_INDEX_NAME
 
 
 def ensure_opensearch_index():
-    """Create the vendor-documents index and vendors index with kNN mapping if they don't exist."""
+    """Create the OpenSearch indices with kNN mapping if they don't exist."""
     try:
         client = _get_opensearch_client()
 
@@ -157,8 +157,9 @@ def ensure_opensearch_index():
 
 def rebuild_vendor_index() -> dict:
     """
-    Drop the vendors index (if it exists) and recreate it with the correct
-    knn_vector mapping for the embedding field.
+    Drop the vendor index (configured via VENDOR_INDEX_NAME) if it exists and
+    recreate it with the correct knn_vector mapping for the embedding field.
+
 
     Returns a summary dict with 'deleted' and 'created' booleans.
     """

@@ -382,8 +382,9 @@ def create_vendor(db: Session, data: dict) -> Vendor:
 
 def reindex_all_vendors(db: Session) -> dict:
     """
-    Rebuild the vendors OpenSearch index from scratch and re-index every
-    vendor currently stored in the database.
+    Rebuild the vendor OpenSearch index (configured via VENDOR_INDEX_NAME)
+    from scratch and re-index every vendor currently stored in the database.
+
 
     Steps:
     1. Drop + recreate the index with correct knn_vector mapping.

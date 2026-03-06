@@ -482,7 +482,12 @@ RULES:
 
 
 async def generate_deal_closure_extract(
-    project_id: str, vendor_email: str, thread_id: str, vendor_name: str, db
+    project_id: str,
+    vendor_email: str,
+    thread_id: str,
+    vendor_name: str,
+    db,
+    include_thread: bool = True,
 ) -> dict:
     """
     Extract final agreed deal terms directly from the database (Quote record).
@@ -596,7 +601,7 @@ async def generate_deal_closure_extract(
 
     # Build structured thread for frontend rendering
     email_thread = []
-    if thread_id:
+    if thread_id and include_thread:
         try:
             from app.services.email import list_thread_messages
 

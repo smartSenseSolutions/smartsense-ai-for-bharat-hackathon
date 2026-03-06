@@ -5,6 +5,8 @@ import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import type { Screen } from '@/app/App';
+import { API_BASE } from '@/app/config';
+
 
 interface CertificateDetail {
   document_type: string;
@@ -72,7 +74,7 @@ const AnimatedCounter = ({ value, duration = 3000 }: { value: number; duration?:
   return <>{count.toLocaleString()}</>;
 };
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
 
 export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: VendorMarketProps) {
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
@@ -535,7 +537,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                   {isExternalLoading && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Gemini is researching the web...
+                      Procure AI is researching the web...
                     </div>
                   )}
                 </div>
