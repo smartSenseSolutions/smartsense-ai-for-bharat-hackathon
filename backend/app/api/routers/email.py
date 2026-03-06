@@ -286,7 +286,7 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
     if not project:
         return {"status": "ignored", "reason": f"Project {project_id} not found"}
 
-    # Look up the vendor by sender email
+    # Look up the vendor by sender email (exact match)
     vendor = db.query(Vendor).filter(Vendor.contact_email == sender_email).first()
 
     # Look up existing quote
@@ -297,6 +297,30 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
             .filter(Quote.project_id == project_id, Quote.vendor_id == vendor.id)
             .first()
         )
+
+    # Fallback: if vendor exact match fails (e.g., alias/subaddressing `name+acme@`),
+    # try finding a quote natively by comparing the base of the sender email to the `sla_details` sender_email.
+    if not quote:
+        all_project_quotes = (
+            db.query(Quote).filter(Quote.project_id == project_id).all()
+        )
+        sender_base = (
+            sender_email.split("+")[0] + "@" + sender_email.split("@")[1]
+            if "+" in sender_email and "@" in sender_email
+            else sender_email
+        )
+        for q in all_project_quotes:
+            q_sla = q.sla_details or {}
+            q_email = q_sla.get("sender_email", "")
+            q_base = (
+                q_email.split("+")[0] + "@" + q_email.split("@")[1]
+                if "+" in q_email and "@" in q_email
+                else q_email
+            )
+
+            if q_base.lower() == sender_base.lower():
+                quote = q
+                break
 
     processed_attachment_ids = []
     if quote and quote.sla_details:

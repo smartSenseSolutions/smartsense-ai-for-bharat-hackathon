@@ -100,11 +100,15 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
         .filter(ProjectInvitedVendor.project_id == project_id)
         .all()
     )
-    name_by_email = {
-        iv.contact_email.strip().lower(): iv.vendor_name
-        for iv in invited
-        if iv.contact_email
-    }
+    name_by_email = {}
+    for iv in invited:
+        if iv.contact_email:
+            em = iv.contact_email.strip().lower()
+            name_by_email[em] = iv.vendor_name
+            if "+" in em and "@" in em:
+                base_em = em.split("+")[0] + "@" + em.split("@")[1]
+                name_by_email[base_em] = iv.vendor_name
+
     invited_emails = set(name_by_email.keys())
 
     result: list[dict] = []
@@ -292,6 +296,11 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
                         "message_id": latest_vendor_msg.get("id"),
                         "processed_attachment_ids": updated_processed,
                         "last_message_at": nylas_date,
+                        "payment_schedule": parsed.get("payment_schedule", []),
+                        "delivery_milestones": parsed.get("delivery_milestones", []),
+                        "payment_terms": parsed.get("payment_terms"),
+                        "po_number": parsed.get("po_number"),
+                        "contract_number": parsed.get("contract_number"),
                     }
 
                     db.commit()
@@ -345,8 +354,17 @@ def _format_quote_resp(q: Quote, name_by_email: dict) -> dict:
     sla = q.sla_details or {}
     sender_email_raw = sla.get("sender_email", "")
     sender_email = sender_email_raw.strip().lower() if sender_email_raw else ""
+    base_email = (
+        sender_email.split("+")[0] + "@" + sender_email.split("@")[1]
+        if "+" in sender_email and "@" in sender_email
+        else sender_email
+    )
+
     vendor_name = (
-        name_by_email.get(sender_email) or sla.get("sender_name") or sender_email_raw
+        name_by_email.get(sender_email)
+        or name_by_email.get(base_email)
+        or sla.get("sender_name")
+        or sender_email_raw
     )
     return {
         "id": q.id,

@@ -1,4 +1,4 @@
-import { FileText, DollarSign, TrendingUp, Sparkles, Clock } from 'lucide-react';
+import { FileText, PiggyBank, TrendingUp, Sparkles, Clock } from 'lucide-react';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 
@@ -105,7 +105,7 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
 
   const metrics = [
     { label: 'All RFPs', value: stats?.total_rfps_count?.toString() || '0', subtext: 'Overall', icon: FileText, color: 'text-blue-600 bg-blue-50', link: 'proposals-list' as Screen },
-    { label: 'Total Savings', value: `$${stats?.total_savings || 0}`, subtext: 'This Month', icon: DollarSign, color: 'text-gray-600 bg-gray-50' },
+    { label: 'Total Savings', value: stats?.total_savings ? stats.total_savings.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }) : '₹0', subtext: 'Overall', icon: PiggyBank, color: 'text-gray-600 bg-gray-50' },
     { label: 'Active Vendors', value: stats?.active_vendors_count?.toString() || '0', subtext: 'Verified', icon: TrendingUp, color: 'text-blue-600 bg-blue-50' },
   ];
 

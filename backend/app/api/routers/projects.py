@@ -191,6 +191,75 @@ def get_projects(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
     return projects
 
 
+@router.get("/history")
+async def get_projects_history(db: Session = Depends(get_db)):
+    """
+    Fetch all completed projects with their winning quote details and closure info.
+    """
+    from app.models.domain import Quote
+    from app.services.quotes import generate_deal_closure_extract
+
+    # Stick to original design: projects are "closed" or "completed"
+    completed_projects = (
+        db.query(Project)
+        .filter(Project.status.in_(["completed", "closed", ProjectStatus.COMPLETED]))
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+
+    history = []
+    for project in completed_projects:
+        # Find winning quote (accepted)
+        winning_quote = (
+            db.query(Quote)
+            .filter(Quote.project_id == project.id, Quote.status == "accepted")
+            .first()
+        )
+
+        if winning_quote:
+            # Get closure details - pass empty strings to avoid heavy thread fetching if not needed
+            # but generate_deal_closure_extract will auto-fill from quote if empty
+            try:
+                closure_data = await generate_deal_closure_extract(
+                    project_id=project.id,
+                    vendor_email="",
+                    thread_id="",
+                    vendor_name="",
+                    db=db,
+                    include_thread=False,
+                )
+
+                # Map category from search_intent if available
+                category = "General"
+                if project.search_intent and isinstance(project.search_intent, dict):
+                    category = project.search_intent.get("product_category", "General")
+
+                history.append(
+                    {
+                        "id": closure_data.get("po_number") or f"PO-{project.id[:8]}",
+                        "projectId": project.id,
+                        "projectName": project.project_name,
+                        "vendor": closure_data.get("vendor_name"),
+                        "location": closure_data.get("vendor_location") or "N/A",
+                        "totalValue": closure_data.get("final_price"),
+                        "closedDate": project.created_at.strftime("%d %b %Y"),
+                        "deliveryDate": closure_data.get("delivery_days") or "TBD",
+                        "status": "Completed",
+                        "category": category,
+                        "savings": closure_data.get("savings") or 0,
+                        "savingsPercentage": closure_data.get("savings_percentage")
+                        or 0,
+                        # Pass back full data for details view
+                        "fullData": closure_data,
+                    }
+                )
+            except Exception as e:
+                print(f"[history] Error extracting closure for {project.id}: {e}")
+                continue
+
+    return history
+
+
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()

@@ -537,7 +537,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                   {isExternalLoading && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Gemini is researching the web...
+                      Procure AI is researching the web...
                     </div>
                   )}
                 </div>

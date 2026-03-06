@@ -839,7 +839,7 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
                   {isExternalLoading && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 text-blue-600 rounded-full text-xs font-medium border border-blue-100 animate-pulse">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Gemini is researching the web...
+                      Procure AI is researching the web...
                     </div>
                   )}
                 </div>
@@ -3073,8 +3073,11 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
                       </div>
                       {q.price != null && (
                         <span className="text-sm font-bold text-gray-900 flex items-center gap-0.5">
-                          <IndianRupee className="w-3.5 h-3.5 text-gray-500" />
-                          {Number(q.price).toLocaleString('en-IN')}
+                          {(q.negotiated_price || q.price).toLocaleString('en-IN', {
+                            style: 'currency',
+                            currency: q.currency || 'INR',
+                            maximumFractionDigits: 0
+                          })}
                         </span>
                       )}
                       {closureVendor?.id === q.id && <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}

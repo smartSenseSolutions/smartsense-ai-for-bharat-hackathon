@@ -326,8 +326,10 @@ async def generate_negotiation_insights(
             else "Unknown"
         )
         body = clean_html(msg.get("body", ""))
-        if len(body) > 3000:
-            body = body[:3000] + "... [truncated]"
+        if msg.get("attachments"):
+            att_names = [a.get("filename", "attachment") for a in msg["attachments"]]
+            body += f"\n[Attached Documents: {', '.join(att_names)}]"
+
         transcript_parts.append(f"From: {from_name}\n{body}")
 
     transcript = "\n---\n".join(transcript_parts)
@@ -343,21 +345,27 @@ EMAIL THREAD:
 Extract the following information from the LATEST state of the negotiation. Return ONLY valid JSON with these exact keys:
 
 {{
-  "price": "<latest quoted price as a string, e.g. '₹1,20,000' or 'Not quoted yet'>",
+  "price": "<the vendor's originally quoted total price for this RFP BEFORE any negotiation, e.g. '₹1,20,000'. Ignore subsequent requested discounts unless the vendor explicitly agreed.>",
   "negotiated_price": <number or null>,
   "delivery_timeline": "<latest delivery timeline, e.g. '30-45 days' or 'Not specified'>",
   "warranty": "<warranty terms or 'Not mentioned'>",
   "key_terms": ["<term 1>", "<term 2>", "<term 3>"],
   "sentiment": "<Evaluate overall vendor tone based on their replies. Must be EXACTLY ONE of: cooperative, neutral, resistant, aggressive>",
   "summary": "<1-2 sentence summary of current negotiation status>",
-  "latest_change": "<Describe exactly what the vendor or buyer said in the most recent message (e.g. 'Vendor offered a 5% discount', 'Requested updated delivery date'). Do NOT just say 'Initial contact' unless there is literally only 1 message in the entire thread.>"
+  "latest_change": "<Describe exactly what the vendor or buyer said in the most recent message (e.g. 'Vendor offered a 5% discount', 'Requested updated delivery date'). Do NOT just say 'Initial contact' unless there is literally only 1 message in the entire thread.>",
+  "payment_schedule": [{{"milestone": "<string>", "percentage": <number>, "dueDate": "<string>"}}],
+  "delivery_milestones": [{{"phase": "<string>", "duration": "<string>", "estimated_date": "<string>"}}],
+  "payment_terms": "<string or null>",
+  "po_number": "<string or null>",
+  "contract_number": "<string or null>"
 }}
 
 RULES:
 - Extract from the ACTUAL email content, not from assumptions.
-- Only extract `negotiated_price` as a NUMBER if the vendor explicitly agreed to a new price or offered a specific discount value. If the user requests a discount but the vendor does not reply or agree, output null. IMPORTANT: For the negotiated_price, you MUST calculate and return the absolute numerical value (e.g., 90000). DO NOT return terms like 'cheaper', '10%', or 'discounted'.
+- Only extract `negotiated_price` as a NUMBER if the vendor explicitly agreed to a new price or offered a specific discount value. If the buyer requests a discount but the vendor does not reply or agree, output null. IMPORTANT: For the negotiated_price, you MUST calculate and return the absolute numerical value (e.g., 90000). DO NOT return terms like 'cheaper', '10%', or 'discounted'.
 - key_terms should include payment terms, warranty, MOQ, certifications, etc. if mentioned. Max 5 terms.
 - sentiment reflects the VENDOR's tone toward the negotiation.
+- payment_schedule and delivery_milestones must be exact lists of objects as defined above. Output empty list if not specified.
 - If information is not available, say "Not specified" or "Not available" for strings, and use null for numbers.
 - Return ONLY the JSON object, no markdown formatting."""
 
@@ -421,6 +429,26 @@ RULES:
                 quote.warranty_terms = warranty_terms
                 updated = True
 
+            # Extract closure fields and update SLA details
+            current_sla = quote.sla_details or {}
+            sla_updated = False
+
+            for key in ["payment_schedule", "delivery_milestones"]:
+                val = result.get(key)
+                if val and isinstance(val, list) and len(val) > 0:
+                    current_sla[key] = val
+                    sla_updated = True
+
+            for key in ["payment_terms", "po_number", "contract_number"]:
+                val = result.get(key)
+                if val and val not in ["Not specified", "Not available", "None"]:
+                    current_sla[key] = val
+                    sla_updated = True
+
+            if sla_updated:
+                quote.sla_details = dict(current_sla)
+                updated = True
+
             if updated:
                 db.commit()
 
@@ -454,7 +482,12 @@ RULES:
 
 
 async def generate_deal_closure_extract(
-    project_id: str, vendor_email: str, thread_id: str, vendor_name: str, db
+    project_id: str,
+    vendor_email: str,
+    thread_id: str,
+    vendor_name: str,
+    db,
+    include_thread: bool = True,
 ) -> dict:
     """
     Extract final agreed deal terms directly from the database (Quote record).
@@ -478,12 +511,28 @@ async def generate_deal_closure_extract(
         reverse=True,
     )
 
+    vendor_email_base = (
+        vendor_email.split("+")[0] + "@" + vendor_email.split("@")[1]
+        if vendor_email and "+" in vendor_email and "@" in vendor_email
+        else vendor_email
+    )
+
     quote = next(
         (
             q
             for q in all_quotes
-            if vendor_email
-            and (q.sla_details or {}).get("sender_email") == vendor_email
+            if vendor_email_base
+            and (
+                (
+                    (q.sla_details or {}).get("sender_email", "").split("+")[0]
+                    + "@"
+                    + (q.sla_details or {}).get("sender_email", "").split("@")[1]
+                )
+                if "+" in (q.sla_details or {}).get("sender_email", "")
+                and "@" in (q.sla_details or {}).get("sender_email", "")
+                else (q.sla_details or {}).get("sender_email")
+            )
+            == vendor_email_base
         ),
         all_quotes[0] if all_quotes else None,
     )
@@ -492,26 +541,67 @@ async def generate_deal_closure_extract(
         vendor_email = (quote.sla_details or {}).get("sender_email", "")
         thread_id = (quote.sla_details or {}).get("thread_id", "")
 
-    # Always fetch the real vendor name from DB to prevent showing contact person names
-    from app.models.domain import ProjectInvitedVendor
+    vendor_email_base = (
+        vendor_email.split("+")[0] + "@" + vendor_email.split("@")[1]
+        if vendor_email and "+" in vendor_email and "@" in vendor_email
+        else vendor_email
+    )
 
-    if vendor_email:
-        piv = (
+    # Fetch the real vendor name and details from DB
+    from app.models.domain import ProjectInvitedVendor, Vendor
+    import random
+    import string
+
+    vendor_location = ""
+    vendor_contact = ""
+
+    # Try finding the vendor natively first
+    db_vendor = None
+    if vendor_email_base:
+        all_vendors = db.query(Vendor).all()
+        for v in all_vendors:
+            if v.contact_email:
+                v_base = (
+                    v.contact_email.split("+")[0] + "@" + v.contact_email.split("@")[1]
+                    if "+" in v.contact_email and "@" in v.contact_email
+                    else v.contact_email
+                )
+                if v_base.lower() == vendor_email_base.lower():
+                    db_vendor = v
+                    break
+
+        if db_vendor:
+            vendor_location = db_vendor.location or ""
+            vendor_contact = db_vendor.mobile or ""
+
+    if vendor_email_base:
+        pivs = (
             db.query(ProjectInvitedVendor)
-            .filter(
-                ProjectInvitedVendor.project_id == project_id,
-                ProjectInvitedVendor.contact_email == vendor_email,
-            )
-            .first()
+            .filter(ProjectInvitedVendor.project_id == project_id)
+            .all()
         )
+        piv = None
+        for p in pivs:
+            if p.contact_email:
+                p_base = (
+                    p.contact_email.split("+")[0] + "@" + p.contact_email.split("@")[1]
+                    if "+" in p.contact_email and "@" in p.contact_email
+                    else p.contact_email
+                )
+                if p_base.lower() == vendor_email_base.lower():
+                    piv = p
+                    break
+
         if piv and piv.vendor_name:
             vendor_name = piv.vendor_name
+        elif db_vendor and db_vendor.name:
+            vendor_name = db_vendor.name
         elif not vendor_name and quote:
             vendor_name = (quote.sla_details or {}).get("sender_name", "")
 
     # Build structured thread for frontend rendering
     email_thread = []
-    if thread_id:
+    if thread_id and include_thread:
         try:
             from app.services.email import list_thread_messages
 
@@ -591,30 +681,55 @@ async def generate_deal_closure_extract(
         savings = round(original_price - neg_price, 2)
         savings_pct = round((savings / original_price) * 100, 1)
 
+    po_number = sla.get("po_number")
+    if not po_number:
+        po_number = f"PO-{''.join(random.choices(string.digits, k=6))}"
+
+    contract_number = sla.get("contract_number")
+    if not contract_number:
+        contract_number = f"CN-{''.join(random.choices(string.digits, k=6))}"
+
+    import re
+
+    delivery_days_str = quote.delivery_timeline if quote else None
+    delivery_days = None
+    if delivery_days_str:
+        # Extract digits from "45 days" or "4 weeks" -> 45
+        nums = re.findall(r"\d+", delivery_days_str)
+        if nums:
+            val = nums[0]
+            if "week" in delivery_days_str.lower():
+                val = str(int(val) * 7)
+            elif "month" in delivery_days_str.lower():
+                val = str(int(val) * 30)
+            delivery_days = f"{val} days"
+        else:
+            delivery_days = delivery_days_str
+
     return {
         "vendor_name": vendor_name,
-        "vendor_email": vendor_email,
+        "vendor_email": vendor_email_base,
         "final_price": neg_price,
         "original_price": original_price,
         "negotiated_price": neg_price,
-        "savings": savings,
-        "savings_percentage": savings_pct,
+        "savings": savings if savings is not None else 0,
+        "savings_percentage": savings_pct if savings_pct is not None else 0,
         "currency": quote.currency if quote else "INR",
-        "po_number": sla.get("po_number"),
-        "contract_number": sla.get("contract_number"),
+        "po_number": po_number,
+        "contract_number": contract_number,
         "payment_schedule": sla.get("payment_schedule", []),
         "delivery_milestones": sla.get("delivery_milestones", []),
         "payment_terms": sla.get("payment_terms", ""),
-        "delivery_days": quote.delivery_timeline if quote else None,
+        "delivery_days": delivery_days,
         "warranty": quote.warranty_terms if quote else "",
         "certifications": [quote.compliance_certifications]
         if quote and quote.compliance_certifications
         else [],
         "key_terms": [],  # Extracted at negotiation stage or not essential for this UI
         "summary": "Deal closed based on negotiation.",
-        "vendor_location": "",
-        "vendor_contact": "",
-        "contact_person": "",
+        "vendor_location": vendor_location,
+        "vendor_contact": vendor_contact,
+        "contact_person": vendor_email,
         "contract_start_date": "",
         "contract_end_date": "",
         "thread_id": thread_id,

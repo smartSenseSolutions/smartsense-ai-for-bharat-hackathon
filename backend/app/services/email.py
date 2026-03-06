@@ -419,7 +419,7 @@ def list_thread_messages(
                     identifier=grant_id,
                     query_params={
                         "search_query_native": query,
-                        "limit": 30,
+                        "limit": 100,
                     },
                 )
                 print(
@@ -437,7 +437,7 @@ def list_thread_messages(
                 identifier=grant_id,
                 query_params={
                     "search_query_native": subject_query,
-                    "limit": 50,
+                    "limit": 100,
                 },
             )
             print(
@@ -446,6 +446,11 @@ def list_thread_messages(
             )
             # Client-side filter: keep only messages involving this vendor
             vendor_lower = vendor_email.lower()
+            vendor_base_email = (
+                vendor_lower.split("+")[0] + "@" + vendor_lower.split("@")[1]
+                if "+" in vendor_lower and "@" in vendor_lower
+                else vendor_lower
+            )
             our_emails = {
                 settings.NYLAS_SENDER_EMAIL.lower(),
                 settings.SUPERUSER_EMAIL.lower(),
@@ -453,21 +458,36 @@ def list_thread_messages(
             matched_broad = 0
             for msg in response.data:
                 to_emails = {
-                    (getattr(a, "email", "") or "").lower()
+                    (
+                        a.get("email", "")
+                        if isinstance(a, dict)
+                        else getattr(a, "email", "") or ""
+                    ).lower()
                     for a in (getattr(msg, "to", None) or [])
                 }
                 from_emails = {
-                    (getattr(a, "email", "") or "").lower()
+                    (
+                        a.get("email", "")
+                        if isinstance(a, dict)
+                        else getattr(a, "email", "") or ""
+                    ).lower()
                     for a in (getattr(msg, "from_", None) or [])
                 }
                 all_emails = to_emails | from_emails
+                all_base_emails = {
+                    addr.split("+")[0] + "@" + addr.split("@")[1]
+                    if "+" in addr and "@" in addr
+                    else addr
+                    for addr in all_emails
+                }
                 # Keep if vendor email in to/from, or if it's from us TO vendor
-                if vendor_lower in all_emails:
+                if vendor_base_email in all_base_emails:
                     raw_messages.append(msg)
                     matched_broad += 1
-                elif (from_emails & our_emails) and vendor_lower in (
-                    msg.body or ""
-                ).lower():
+                elif (from_emails & our_emails) and (
+                    vendor_lower in (msg.body or "").lower()
+                    or vendor_base_email in (msg.body or "").lower()
+                ):
                     raw_messages.append(msg)
                     matched_broad += 1
             print(
@@ -487,7 +507,7 @@ def list_thread_messages(
                     identifier=inbound_grant,
                     query_params={
                         "search_query_native": subject_query,
-                        "limit": 30,
+                        "limit": 100,
                     },
                 )
                 print(
@@ -496,23 +516,47 @@ def list_thread_messages(
                 )
                 # Filter: keep only messages related to this vendor
                 vendor_lower = vendor_email.lower()
+                vendor_base_email = (
+                    vendor_lower.split("+")[0] + "@" + vendor_lower.split("@")[1]
+                    if "+" in vendor_lower and "@" in vendor_lower
+                    else vendor_lower
+                )
                 matched = 0
                 for msg in response.data:
                     # Check from/to name or email for vendor
                     from_emails_raw = {
-                        (getattr(a, "email", "") or "").lower()
+                        (
+                            a.get("email", "")
+                            if isinstance(a, dict)
+                            else getattr(a, "email", "") or ""
+                        ).lower()
                         for a in (getattr(msg, "from_", None) or [])
                     }
                     to_emails_raw = {
-                        (getattr(a, "email", "") or "").lower()
+                        (
+                            a.get("email", "")
+                            if isinstance(a, dict)
+                            else getattr(a, "email", "") or ""
+                        ).lower()
                         for a in (getattr(msg, "to", None) or [])
                     }
                     all_addrs = from_emails_raw | to_emails_raw
+
+                    # Convert all addresses to their base emails for matching
+                    all_base_addrs = {
+                        addr.split("+")[0] + "@" + addr.split("@")[1]
+                        if "+" in addr and "@" in addr
+                        else addr
+                        for addr in all_addrs
+                    }
+
                     body_lower = (msg.body or "").lower()
+
                     # Match by: email in addresses, email in body, or same thread
                     if (
-                        vendor_lower in all_addrs
+                        vendor_base_email in all_base_addrs
                         or vendor_lower in body_lower
+                        or vendor_base_email in body_lower
                         or msg.thread_id == thread_id
                     ):
                         raw_messages.append(msg)
@@ -811,7 +855,7 @@ Extract the quotation details from the email body and any attached files.
 Look carefully for pricing information, delivery timelines, quality standards (e.g. ISO certs mentioned or attached), warranty terms, compliance or certifications, and any formal contract details like PO number, Contract number, or payment milestones.
 
 Return ONLY a valid JSON object with these fields. If a field isn't explicitly mentioned, use null.
-- "price": number (extract the final/total numerical price out of any text like 'USD 55,500' -> 55500. Handle commas/symbols. null if completely missing)
+- "price": number (extract the final/total numerical price out of any text like 'USD 55,500' -> 55500. Handle commas/symbols. null if completely missing. CRITICAL: extract the price quoted initially by the VENDOR. DO NOT extract requested discounts or lower prices suggested by the buyer in previous messages)
 - "currency": string (e.g. "INR", "USD"; default "INR")
 - "delivery_timeline": string (e.g. "4 weeks", "12 months" null if not found)
 - "quality_standards": string (details about quality or testing procedures)
