@@ -101,7 +101,9 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
         .all()
     )
     name_by_email = {
-        iv.contact_email: iv.vendor_name for iv in invited if iv.contact_email
+        iv.contact_email.strip().lower(): iv.vendor_name
+        for iv in invited
+        if iv.contact_email
     }
     invited_emails = set(name_by_email.keys())
 
@@ -147,8 +149,13 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
                     )
                     needs_extraction = True
 
-            v_email = t["vendor_email"]
-            v_name = name_by_email.get(v_email) or t["vendor_name"] or v_email
+            v_email_raw = t.get("vendor_email", "")
+            v_email = v_email_raw.strip().lower() if v_email_raw else ""
+
+            # Prefer the actual DB name to avoid getting "Sneh Nagrecha" from Nylas outbound
+            v_name = name_by_email.get(v_email)
+            if not v_name:
+                v_name = t.get("vendor_name") or v_email_raw
 
             if needs_extraction:
                 # --- SELF-HEALING EXTRACTION ---
@@ -305,11 +312,11 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
                                 "id": thread_id,
                                 "project_id": project_id,
                                 "vendor_name": v_name,
-                                "sender_email": v_email,
-                                "price": None,
+                                "sender_email": v_email_raw,
+                                "price": "Not quoted yet",
                                 "currency": "INR",
                                 "status": "received",
-                                "delivery_timeline": None,
+                                "delivery_timeline": "Not specified",
                                 "quality_standards": None,
                                 "warranty_terms": None,
                                 "compliance_certifications": None,
@@ -336,16 +343,18 @@ async def get_quotes_by_project(project_id: str, db: Session = Depends(get_db)):
 def _format_quote_resp(q: Quote, name_by_email: dict) -> dict:
     """Helper to format a Quote model into a response dict."""
     sla = q.sla_details or {}
-    sender_email = sla.get("sender_email", "")
+    sender_email_raw = sla.get("sender_email", "")
+    sender_email = sender_email_raw.strip().lower() if sender_email_raw else ""
     vendor_name = (
-        name_by_email.get(sender_email) or sla.get("sender_name") or sender_email
+        name_by_email.get(sender_email) or sla.get("sender_name") or sender_email_raw
     )
     return {
         "id": q.id,
         "project_id": q.project_id,
         "vendor_name": vendor_name,
-        "sender_email": sender_email,
+        "sender_email": sender_email_raw,
         "price": q.price,
+        "negotiated_price": getattr(q, "negotiated_price", None),
         "currency": q.currency or "INR",
         "status": q.status,
         "delivery_timeline": q.delivery_timeline or sla.get("delivery_timeline"),
@@ -422,6 +431,7 @@ async def get_negotiation_insights(
     vendor_name: str = "",
     vendor_email: str = "",
     project_id: str = "",
+    db: Session = Depends(get_db),
 ):
     """
     Analyze a negotiation email thread and return AI-extracted insights:
@@ -435,6 +445,7 @@ async def get_negotiation_insights(
         vendor_name=vendor_name,
         vendor_email=vendor_email,
         project_id=project_id,
+        db=db,
     )
     return insights
 

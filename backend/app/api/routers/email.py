@@ -349,6 +349,24 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
             quote.compliance_certifications = parsed.get("compliance_certifications")
 
         sla_details = quote.sla_details or {}
+
+        # Merge the new contract terms into sla_details
+        if "po_number" in parsed and parsed["po_number"]:
+            sla_details["po_number"] = parsed["po_number"]
+        if "contract_number" in parsed and parsed["contract_number"]:
+            sla_details["contract_number"] = parsed["contract_number"]
+        if "payment_schedule" in parsed and parsed["payment_schedule"]:
+            sla_details["payment_schedule"] = parsed["payment_schedule"]
+        if "delivery_milestones" in parsed and parsed["delivery_milestones"]:
+            sla_details["delivery_milestones"] = parsed["delivery_milestones"]
+
+        # payment_terms fallback to project default if not provided
+        payment_terms = parsed.get("payment_terms")
+        if not payment_terms and project.rfp_data:
+            payment_terms = project.rfp_data.get("paymentTerms")
+        if payment_terms:
+            sla_details["payment_terms"] = payment_terms
+
         if parsed.get("notes"):
             # Append new notes or override
             existing_notes = sla_details.get("notes", "")
@@ -389,6 +407,11 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
                 "note": "Reply received but no price extracted; no Quote record created.",
             }
 
+        # Handle initial fallback for payment terms
+        payment_terms = parsed.get("payment_terms")
+        if not payment_terms and project.rfp_data:
+            payment_terms = project.rfp_data.get("paymentTerms")
+
         # Create the Quote record
         quote = Quote(
             id=str(uuid.uuid4()),
@@ -403,6 +426,11 @@ async def handle_nylas_webhook(request: Request, db: Session = Depends(get_db)):
             compliance_certifications=parsed.get("compliance_certifications"),
             sla_details={
                 "notes": parsed.get("notes"),
+                "po_number": parsed.get("po_number"),
+                "contract_number": parsed.get("contract_number"),
+                "payment_schedule": parsed.get("payment_schedule", []),
+                "delivery_milestones": parsed.get("delivery_milestones", []),
+                "payment_terms": payment_terms,
                 "sender_email": sender_email,
                 "sender_name": sender_name,
                 "email_subject": subject,

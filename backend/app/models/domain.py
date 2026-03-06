@@ -112,6 +112,7 @@ class Quote(Base):
         String, default="received"
     )  # received, short-listed, accepted, rejected, negotiating
     risk_score = Column(Float, nullable=True)
+    negotiated_price = Column(Float, nullable=True)
     sla_details = Column(JSON, nullable=True)
     delivery_timeline = Column(String, nullable=True)
     quality_standards = Column(Text, nullable=True)

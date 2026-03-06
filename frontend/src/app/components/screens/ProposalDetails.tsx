@@ -65,6 +65,39 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
     }
   }, [currentPhase, proposalKey]);
 
+  // Fetch closed deal data if revisiting a completed proposal
+  useEffect(() => {
+    if (proposal?.status === 'completed' && currentPhase === 'closure' && !closedDealData) {
+      const fetchDealData = async () => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const projectId = proposalKey.replace('RFP-', '');
+          const res = await fetch(`${API_BASE}/api/quotes/deal-closure-extract`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              project_id: projectId,
+              vendor_email: '',
+              thread_id: '',
+              vendor_name: '',
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setClosedDealData(data);
+            setDealClosed(true);
+          }
+        } catch (err) {
+          console.error('Failed to fetch closed deal data', err);
+        }
+      };
+      fetchDealData();
+    }
+  }, [proposal?.status, currentPhase, closedDealData, proposalKey]);
+
   // Lifted search state so it persists across phase tab switches
   const [internalResults, setInternalResults] = useState<AIVendorResult[]>([]);
   const [externalResults, setExternalResults] = useState<AIVendorResult[]>([]);
@@ -2650,6 +2683,21 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
         }),
       });
       const data = res.ok ? await res.json() : {};
+
+      // Mark the quote as accepted in the backend
+      await fetch(`${API_BASE}/api/quotes/bulk-status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          vendor_emails: [closureVendor.sender_email],
+          status: 'accepted',
+        }),
+      });
+
       toast.success(`Deal closed with ${closureVendor.vendor_name || closureVendor.sender_email}`);
       setDealClosureOpen(false);
       onDealClosure?.(closureVendor, data);

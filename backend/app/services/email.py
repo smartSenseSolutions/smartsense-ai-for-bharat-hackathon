@@ -529,9 +529,17 @@ def list_thread_messages(
     # Deduplicate by message ID
     seen_ids: set[str] = set()
     result = []
+
+    rfp_tag = f"RFP-{project_id}".lower() if project_id else None
+
     for msg in raw_messages:
         if msg.id in seen_ids:
             continue
+
+        subject = getattr(msg, "subject", "") or ""
+        if rfp_tag and rfp_tag not in subject.lower():
+            continue
+
         seen_ids.add(msg.id)
 
         # Extract RFC-2822 Message-ID from headers
@@ -794,13 +802,13 @@ def parse_quotation_with_bedrock(
     Use Amazon Bedrock Converse API to extract structured quotation data from a vendor reply email
     and any attached new files (PDFs/Images).
 
-    Returns a dict with: price, currency, delivery_timeline, quality_standards, warranty_terms, compliance_certifications, notes.
+    Returns a dict with: price, currency, delivery_timeline, quality_standards, warranty_terms, compliance_certifications, notes, po_number, contract_number, payment_schedule, delivery_milestones, payment_terms.
     Falls back to empty defaults if Bedrock is unavailable.
     """
     prompt = f"""
 You are an AI procurement assistant. A vendor has replied to an RFP for "{project_name}".
 Extract the quotation details from the email body and any attached files.
-Look carefully for pricing information, delivery timelines, quality standards (e.g. ISO certs mentioned or attached), warranty terms, and compliance or certifications.
+Look carefully for pricing information, delivery timelines, quality standards (e.g. ISO certs mentioned or attached), warranty terms, compliance or certifications, and any formal contract details like PO number, Contract number, or payment milestones.
 
 Return ONLY a valid JSON object with these fields. If a field isn't explicitly mentioned, use null.
 - "price": number (extract the final/total numerical price out of any text like 'USD 55,500' -> 55500. Handle commas/symbols. null if completely missing)
@@ -810,6 +818,11 @@ Return ONLY a valid JSON object with these fields. If a field isn't explicitly m
 - "warranty_terms": string (details about warranty coverage and duration)
 - "compliance_certifications": string (any compliance standard or certification mentioned or attached)
 - "notes": string (any important terms, conditions, or remarks)
+- "po_number": string (e.g. "PO-123456", null if not found)
+- "contract_number": string (e.g. "CN-987654", null if not found)
+- "payment_schedule": list of objects [{{"milestone": "string", "percentage": number, "dueDate": "string"}}], empty list if not specified
+- "delivery_milestones": list of objects [{{"phase": "string", "duration": "string", "estimated_date": "string"}}], empty list if not specified
+- "payment_terms": string (e.g. "Net 30", "50% upfront", null if not found)
 
 Return only the JSON object, no markdown formatting.
     """
@@ -897,4 +910,9 @@ Return only the JSON object, no markdown formatting.
             "warranty_terms": None,
             "compliance_certifications": None,
             "notes": None,
+            "po_number": None,
+            "contract_number": None,
+            "payment_schedule": [],
+            "delivery_milestones": [],
+            "payment_terms": None,
         }
