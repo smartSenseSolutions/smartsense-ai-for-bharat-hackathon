@@ -66,12 +66,12 @@ class Settings(BaseSettings):
     def set_dynamic_names(self):
         # Only append environment if it hasn't been appended already
         if not self.VENDOR_INDEX_NAME.endswith(f"-{self.ENVIRONMENT}"):
-            # self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}-{self.ENVIRONMENT}"
-            self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}"
+            self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}-{self.ENVIRONMENT}"
+            # self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}"
 
         if self.DATABASE_URL and not self.DATABASE_URL.endswith(f"_{self.ENVIRONMENT}"):
-            # self.DATABASE_URL = f"{self.DATABASE_URL}_{self.ENVIRONMENT}"
-            self.DATABASE_URL = f"{self.DATABASE_URL}"
+            self.DATABASE_URL = f"{self.DATABASE_URL}_{self.ENVIRONMENT}"
+            # self.DATABASE_URL = f"{self.DATABASE_URL}"
 
         return self
 
