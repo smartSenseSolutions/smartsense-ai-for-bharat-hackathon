@@ -6,6 +6,8 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { Input } from '@/app/components/ui/input';
 import { ConfirmDialog } from '@/app/components/ui/ConfirmDialog';
 import { jwtDecode } from 'jwt-decode';
+import { API_BASE } from '@/app/config';
+
 
 interface AIRFPCreatorCenteredProps {
   onBack: () => void;
@@ -211,7 +213,7 @@ export function AIRFPCreatorCentered({ onBack, onSendForApproval, onSaveAsDraft,
     }
   }, [rfpGenerated]);
 
-  const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000';
+
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isGenerating) return;

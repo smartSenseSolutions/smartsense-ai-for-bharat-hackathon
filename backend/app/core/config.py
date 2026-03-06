@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     OPENSEARCH_URL: Optional[str] = None
     OPENSEARCH_USER: Optional[str] = None
     OPENSEARCH_PASSWORD: Optional[str] = None
-    OPENSEARCH_INDEX: str = "vendor-documents"
-    VENDOR_INDEX_NAME: str = "vendors"
+    OPENSEARCH_INDEX: str
+    VENDOR_INDEX_NAME: str
 
     S3_BUCKET_NAME: Optional[str] = None
     S3_RFP_BUCKET: Optional[str] = None  # bucket for published RFP PDFs
