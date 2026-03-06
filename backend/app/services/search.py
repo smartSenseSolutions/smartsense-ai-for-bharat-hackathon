@@ -326,7 +326,8 @@ def _rrf_fuse(
 
 
 async def search_vendors_hybrid(
-    intent: QueryIntent,
+    intent: Optional[QueryIntent] = None,
+    query: Optional[str] = None,
     top_n: int = settings.VENDOR_SEARCH_TOP_N,
 ) -> list[dict]:
     """
@@ -351,6 +352,10 @@ async def search_vendors_hybrid(
     if not intent:
         if not query:
             return []
+        intent = await decompose_query(query)
+    elif isinstance(intent, str):
+        # Handle cases where intent was passed as a string (legacy/direct calls)
+        query = intent
         intent = await decompose_query(query)
 
     client = _get_opensearch_client()
