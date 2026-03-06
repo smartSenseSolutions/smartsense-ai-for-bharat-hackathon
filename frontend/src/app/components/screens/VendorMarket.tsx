@@ -339,10 +339,33 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                   exit={{ opacity: 0, y: -5 }}
                   className="flex items-center gap-2"
                 >
-                  <div className="flex gap-1">
-                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                    <span className="w-1 h-1 bg-blue-600 rounded-full animate-bounce"></span>
+                  <div className="relative flex items-center justify-center w-5 h-5">
+                    <motion.div
+                      animate={{
+                        rotate: 360,
+                        scale: [1, 1.2, 1],
+                        opacity: [0.5, 1, 0.5]
+                      }}
+                      transition={{
+                        rotate: { duration: 3, repeat: Infinity, ease: "linear" },
+                        scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+                        opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                      }}
+                    >
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                    </motion.div>
+                    <motion.div
+                      className="absolute inset-0 bg-blue-400 rounded-full filter blur-md"
+                      animate={{
+                        scale: [1, 1.5, 1],
+                        opacity: [0.1, 0.3, 0.1]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
                   </div>
                   <p className="text-sm font-medium text-blue-600">
                     {isInternalLoading ? 'Searching internal database...' : 'External search in progress...'}
@@ -376,16 +399,36 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                   <div className="grid grid-cols-2 gap-4">
                     {[1, 2, 3, 4].map(i => (
                       <motion.div
-                        key={i}
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        key={`int-loading-${i}`}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: i * 0.1 }}
-                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden min-h-[140px] flex flex-col shadow-sm"
                       >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
-                        <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
-                        <div className="h-3 bg-gray-100 rounded w-full mb-2" />
-                        <div className="h-3 bg-gray-100 rounded w-1/2" />
+                        {/* Premium shimmer beam effect */}
+                        <motion.div
+                          className="absolute inset-0 z-10 bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-20deg]"
+                          animate={{ left: ['-100%', '200%'] }}
+                          transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }}
+                        />
+                        {/* Gentle background pulse */}
+                        <motion.div
+                          className="absolute inset-0 bg-blue-50/20"
+                          animate={{ opacity: [0.4, 0.8, 0.4] }}
+                          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                        />
+                        <div className="relative z-0 flex items-start justify-between mb-4">
+                          <div className="h-5 bg-gray-200/80 rounded flex-1 mr-8" />
+                          <div className="h-5 bg-green-100/80 rounded-full w-20 flex-shrink-0" />
+                        </div>
+                        <div className="relative z-0 space-y-2.5 mb-5">
+                          <div className="h-3 bg-gray-100 rounded w-full" />
+                          <div className="h-3 bg-gray-100 rounded w-5/6" />
+                        </div>
+                        <div className="relative z-0 flex items-center gap-3 mt-auto">
+                          <div className="h-4 bg-gray-200/60 rounded w-16" />
+                          <div className="h-4 bg-gray-200/60 rounded w-12" />
+                        </div>
                       </motion.div>
                     ))}
                   </div>
@@ -502,23 +545,37 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
                     {[1, 2].map(i => (
                       <motion.div
                         key={`ext-loading-${i}`}
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: i * 0.1 }}
-                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden"
+                        className="bg-white border border-[#eeeff1] rounded-xl p-4 relative overflow-hidden min-h-[140px] flex flex-col shadow-sm"
                       >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50/50 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="h-5 bg-gray-100 rounded-md w-1/2" />
-                          <div className="h-4 bg-gray-50 rounded-full w-14" />
+                        {/* Premium shimmer beam effect */}
+                        <motion.div
+                          className="absolute inset-0 z-10 bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-20deg]"
+                          animate={{ left: ['-100%', '200%'] }}
+                          transition={{ repeat: Infinity, duration: 1.8, ease: "linear", delay: 0.2 }}
+                        />
+                        {/* Gentle background pulse */}
+                        <motion.div
+                          className="absolute inset-0 bg-purple-50/10"
+                          animate={{ opacity: [0.4, 0.8, 0.4] }}
+                          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                        />
+                        <div className="relative z-0 flex items-start justify-between mb-4">
+                          <div className="h-5 bg-gray-200/80 rounded flex-1 mr-8" />
+                          <div className="h-5 bg-blue-100/80 rounded-full w-20 flex-shrink-0" />
                         </div>
-                        <div className="space-y-2 mb-4">
+                        <div className="relative z-0 space-y-2.5 mb-5">
                           <div className="h-3 bg-gray-100 rounded w-full" />
-                          <div className="h-3 bg-gray-100 rounded w-[85%]" />
+                          <div className="h-3 bg-gray-100 rounded w-4/5" />
                         </div>
-                        <div className="flex items-center justify-between">
-                          <div className="h-3 bg-gray-100 rounded w-24" />
-                          <div className="h-3 bg-blue-50/50 rounded w-20" />
+                        <div className="relative z-0 flex items-center justify-between mt-auto">
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 bg-gray-200/60 rounded w-16" />
+                            <div className="h-4 bg-gray-200/60 rounded w-12" />
+                          </div>
+                          <div className="h-4 bg-blue-50/80 rounded-full w-14" />
                         </div>
                       </motion.div>
                     ))}

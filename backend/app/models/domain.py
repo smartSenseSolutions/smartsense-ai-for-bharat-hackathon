@@ -112,7 +112,12 @@ class Quote(Base):
         String, default="received"
     )  # received, short-listed, accepted, rejected, negotiating
     risk_score = Column(Float, nullable=True)
+    negotiated_price = Column(Float, nullable=True)
     sla_details = Column(JSON, nullable=True)
+    delivery_timeline = Column(String, nullable=True)
+    quality_standards = Column(Text, nullable=True)
+    warranty_terms = Column(Text, nullable=True)
+    compliance_certifications = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="quotes")

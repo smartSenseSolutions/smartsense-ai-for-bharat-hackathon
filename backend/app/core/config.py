@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Optional
 
 
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    ENVIRONMENT: str = "dev"
     DATABASE_URL: str = (
         "postgresql+psycopg2://postgres:postgres@localhost:5432/procure_ai"
     )
@@ -59,6 +61,19 @@ class Settings(BaseSettings):
     NYLAS_API_URI: str = "https://api.us.nylas.com"
     NYLAS_WEBHOOK_SECRET: Optional[str] = None
     NYLAS_SENDER_EMAIL: str = "noreply@procureai.nylas.email"
+
+    @model_validator(mode="after")
+    def set_dynamic_names(self):
+        # Only append environment if it hasn't been appended already
+        if not self.VENDOR_INDEX_NAME.endswith(f"-{self.ENVIRONMENT}"):
+            # self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}-{self.ENVIRONMENT}"
+            self.VENDOR_INDEX_NAME = f"{self.VENDOR_INDEX_NAME}"
+
+        if self.DATABASE_URL and not self.DATABASE_URL.endswith(f"_{self.ENVIRONMENT}"):
+            # self.DATABASE_URL = f"{self.DATABASE_URL}_{self.ENVIRONMENT}"
+            self.DATABASE_URL = f"{self.DATABASE_URL}"
+
+        return self
 
     class Config:
         env_file = ".env"

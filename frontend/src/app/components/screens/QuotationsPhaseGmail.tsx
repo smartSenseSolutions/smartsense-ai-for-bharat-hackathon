@@ -1,4 +1,4 @@
-import { Send, X, IndianRupee, Clock, FileText, FileSpreadsheet, Download, Loader2, Mail, ChevronDown } from 'lucide-react';
+import { Send, X, IndianRupee, Clock, FileText, FileSpreadsheet, Download, Loader2, Mail, ChevronDown, Shield, Award, CheckCircle2 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -246,7 +246,7 @@ export function QuotationsPhaseGmail({ proposal, readOnly }: { proposal: any; re
     <>
       {readOnly && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-lg mb-4 text-sm text-amber-800">
-          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
+          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z" /></svg>
           <span>This phase is read-only. Deal has been closed.</span>
         </div>
       )}
@@ -406,7 +406,25 @@ export function QuotationsPhaseGmail({ proposal, readOnly }: { proposal: any; re
               {selectedQuotation.delivery_timeline && (
                 <span className="flex items-center gap-1 text-gray-700">
                   <Clock className="w-3.5 h-3.5 text-blue-600" />
-                  {selectedQuotation.delivery_timeline}
+                  <span title={selectedQuotation.delivery_timeline} className="max-w-[200px] truncate">{selectedQuotation.delivery_timeline}</span>
+                </span>
+              )}
+              {selectedQuotation.warranty_terms && (
+                <span className="flex items-center gap-1 text-gray-700">
+                  <Shield className="w-3.5 h-3.5 text-blue-600" />
+                  <span title={selectedQuotation.warranty_terms} className="max-w-[150px] truncate">{selectedQuotation.warranty_terms}</span>
+                </span>
+              )}
+              {selectedQuotation.quality_standards && (
+                <span className="flex items-center gap-1 text-gray-700">
+                  <Award className="w-3.5 h-3.5 text-blue-600" />
+                  <span title={selectedQuotation.quality_standards} className="max-w-[150px] truncate">{selectedQuotation.quality_standards}</span>
+                </span>
+              )}
+              {selectedQuotation.compliance_certifications && (
+                <span className="flex items-center gap-1 text-gray-700">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span title={selectedQuotation.compliance_certifications} className="max-w-[150px] truncate">{selectedQuotation.compliance_certifications}</span>
                 </span>
               )}
             </div>
@@ -454,19 +472,37 @@ export function QuotationsPhaseGmail({ proposal, readOnly }: { proposal: any; re
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">{msg.subject}</h4>
                           )}
 
-                          {/* Matching Quote Metadata (Price/Timeline) */}
-                          {matchingQuote && (matchingQuote.price != null || matchingQuote.delivery_timeline) && (
-                            <div className="flex items-center gap-4 mb-4 py-2 border-y border-gray-100/50">
+                          {/* Matching Quote Metadata */}
+                          {matchingQuote && (matchingQuote.price != null || matchingQuote.delivery_timeline || matchingQuote.warranty_terms || matchingQuote.quality_standards || matchingQuote.compliance_certifications) && (
+                            <div className="flex items-center gap-5 mb-4 py-3 border-y border-gray-100/80 flex-wrap bg-white/50 px-3 rounded-lg">
                               {matchingQuote.price != null && (
-                                <div className="flex flex-col">
-                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Extracted Price</span>
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider flex items-center gap-1"><IndianRupee className="w-3 h-3" /> Extracted Price</span>
                                   <span className="text-sm font-bold text-blue-600">₹ {Number(matchingQuote.price).toLocaleString('en-IN')}</span>
                                 </div>
                               )}
                               {matchingQuote.delivery_timeline && (
-                                <div className="flex flex-col">
-                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Timeline</span>
-                                  <span className="text-sm font-medium text-gray-900">{matchingQuote.delivery_timeline}</span>
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider flex items-center gap-1"><Clock className="w-3 h-3" /> Timeline</span>
+                                  <span className="text-sm font-medium text-gray-900 max-w-[200px] truncate" title={matchingQuote.delivery_timeline}>{matchingQuote.delivery_timeline}</span>
+                                </div>
+                              )}
+                              {matchingQuote.warranty_terms && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider flex items-center gap-1"><Shield className="w-3 h-3" /> Warranty</span>
+                                  <span className="text-sm font-medium text-gray-900 max-w-[200px] truncate" title={matchingQuote.warranty_terms}>{matchingQuote.warranty_terms}</span>
+                                </div>
+                              )}
+                              {matchingQuote.quality_standards && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider flex items-center gap-1"><Award className="w-3 h-3" /> Quality</span>
+                                  <span className="text-sm font-medium text-gray-900 max-w-[200px] truncate" title={matchingQuote.quality_standards}>{matchingQuote.quality_standards}</span>
+                                </div>
+                              )}
+                              {matchingQuote.compliance_certifications && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Compliance</span>
+                                  <span className="text-sm font-medium text-gray-900 max-w-[200px] truncate" title={matchingQuote.compliance_certifications}>{matchingQuote.compliance_certifications}</span>
                                 </div>
                               )}
                             </div>

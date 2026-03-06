@@ -499,17 +499,9 @@ def list_thread_messages(
                 matched = 0
                 for msg in response.data:
                     # Check from/to name or email for vendor
-                    from_names = {
-                        (getattr(a, "name", "") or "").lower()
-                        for a in (getattr(msg, "from_", None) or [])
-                    }
                     from_emails_raw = {
                         (getattr(a, "email", "") or "").lower()
                         for a in (getattr(msg, "from_", None) or [])
-                    }
-                    to_names = {
-                        (getattr(a, "name", "") or "").lower()
-                        for a in (getattr(msg, "to", None) or [])
                     }
                     to_emails_raw = {
                         (getattr(a, "email", "") or "").lower()
@@ -537,9 +529,17 @@ def list_thread_messages(
     # Deduplicate by message ID
     seen_ids: set[str] = set()
     result = []
+
+    rfp_tag = f"RFP-{project_id}".lower() if project_id else None
+
     for msg in raw_messages:
         if msg.id in seen_ids:
             continue
+
+        subject = getattr(msg, "subject", "") or ""
+        if rfp_tag and rfp_tag not in subject.lower():
+            continue
+
         seen_ids.add(msg.id)
 
         # Extract RFC-2822 Message-ID from headers
@@ -795,53 +795,124 @@ def extract_project_id_from_subject(subject: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def parse_quotation_with_bedrock(email_body: str, project_name: str) -> dict:
+def parse_quotation_with_bedrock(
+    email_body: str, project_name: str, attachments: list[dict] = None
+) -> dict:
     """
-    Use AWS Bedrock to extract structured quotation data from a vendor reply email.
+    Use Amazon Bedrock Converse API to extract structured quotation data from a vendor reply email
+    and any attached new files (PDFs/Images).
 
-    Returns a dict with: price, currency, delivery_timeline, notes.
+    Returns a dict with: price, currency, delivery_timeline, quality_standards, warranty_terms, compliance_certifications, notes, po_number, contract_number, payment_schedule, delivery_milestones, payment_terms.
     Falls back to empty defaults if Bedrock is unavailable.
     """
     prompt = f"""
 You are an AI procurement assistant. A vendor has replied to an RFP for "{project_name}".
-Extract the quotation details from the email body below.
+Extract the quotation details from the email body and any attached files.
+Look carefully for pricing information, delivery timelines, quality standards (e.g. ISO certs mentioned or attached), warranty terms, compliance or certifications, and any formal contract details like PO number, Contract number, or payment milestones.
 
-Return ONLY a valid JSON object with these fields:
-- "price": number (total price, null if not found)
+Return ONLY a valid JSON object with these fields. If a field isn't explicitly mentioned, use null.
+- "price": number (extract the final/total numerical price out of any text like 'USD 55,500' -> 55500. Handle commas/symbols. null if completely missing)
 - "currency": string (e.g. "INR", "USD"; default "INR")
-- "delivery_timeline": string (e.g. "4 weeks", null if not found)
+- "delivery_timeline": string (e.g. "4 weeks", "12 months" null if not found)
+- "quality_standards": string (details about quality or testing procedures)
+- "warranty_terms": string (details about warranty coverage and duration)
+- "compliance_certifications": string (any compliance standard or certification mentioned or attached)
 - "notes": string (any important terms, conditions, or remarks)
-
-Email body:
----
-{email_body[:3000]}
----
+- "po_number": string (e.g. "PO-123456", null if not found)
+- "contract_number": string (e.g. "CN-987654", null if not found)
+- "payment_schedule": list of objects [{{"milestone": "string", "percentage": number, "dueDate": "string"}}], empty list if not specified
+- "delivery_milestones": list of objects [{{"phase": "string", "duration": "string", "estimated_date": "string"}}], empty list if not specified
+- "payment_terms": string (e.g. "Net 30", "50% upfront", null if not found)
 
 Return only the JSON object, no markdown formatting.
-"""
+    """
+
+    messages_content = []
+
+    # Add attachments as documents or images
+    extracted_text_from_attachments = ""
+    if attachments:
+        for att in attachments:
+            c_type = att.get("content_type", "")
+            doc_bytes = att.get("bytes")
+            fname = att.get("filename", "document")
+
+            if "pdf" in c_type or fname.lower().endswith(".pdf"):
+                try:
+                    import io
+                    from pypdf import PdfReader
+
+                    reader = PdfReader(io.BytesIO(doc_bytes))
+                    pdf_text = []
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            pdf_text.append(text)
+                    extracted_text_from_attachments += (
+                        f"\\n\\n--- Attachment: {fname} ---\\n" + "\\n".join(pdf_text)
+                    )
+                except Exception as e:
+                    print(
+                        f"[email service] Failed to extract text from PDF {fname}: {e}"
+                    )
+            elif any(fmt in c_type for fmt in ["jpeg", "jpg", "png", "webp", "gif"]):
+                fmt = "jpeg" if "jpg" in c_type else c_type.split("/")[-1]
+                messages_content.append(
+                    {"image": {"format": fmt, "source": {"bytes": doc_bytes}}}
+                )
+            elif "text" in c_type or fname.lower().endswith((".txt", ".csv")):
+                try:
+                    text_content = doc_bytes.decode("utf-8", errors="ignore")
+                    extracted_text_from_attachments += (
+                        f"\\n\\n--- Attachment: {fname} ---\\n" + text_content
+                    )
+                except Exception as e:
+                    print(
+                        f"[email service] Failed to decode text attachment {fname}: {e}"
+                    )
+
+    # Add the text prompt
+    combined_text = email_body[:3000] + extracted_text_from_attachments
+    if len(combined_text) > 15000:
+        combined_text = combined_text[:15000] + "... [truncated]"
+
+    messages_content.append(
+        {
+            "text": prompt
+            + "\\n\\nEmail and attachment body:\\n---\\n"
+            + combined_text
+            + "\\n---"
+        }
+    )
 
     try:
         bedrock = get_bedrock_client()
-        body = json.dumps(
-            {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 512,
-                "messages": [{"role": "user", "content": prompt}],
-            }
+        response = bedrock.converse(
+            modelId=settings.BEDROCK_NOVA_MODEL_ID,
+            messages=[{"role": "user", "content": messages_content}],
+            inferenceConfig={"maxTokens": 1024, "temperature": 0.1},
         )
-        response = bedrock.invoke_model(
-            modelId=settings.BEDROCK_MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
-        )
-        text = json.loads(response["body"].read())["content"][0]["text"]
-        return json.loads(text)
+
+        raw_text = response["output"]["message"]["content"][0]["text"].strip()
+        # Strip markdown fences if present
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+
+        parsed = json.loads(raw_text)
+        return parsed
     except Exception as exc:
         print(f"[email service] Bedrock quotation parsing failed: {exc}")
         return {
             "price": None,
             "currency": "INR",
             "delivery_timeline": None,
+            "quality_standards": None,
+            "warranty_terms": None,
+            "compliance_certifications": None,
             "notes": None,
+            "po_number": None,
+            "contract_number": None,
+            "payment_schedule": [],
+            "delivery_milestones": [],
+            "payment_terms": None,
         }
