@@ -1,3 +1,5 @@
+<mark>**LOGIN CREDENTIALS FOR HOSTED VERSION ARE SHARED IN THE PPT THAT WAS SUBMITTED**</mark>
+
 # Procure AI — AI for Bharat Hackathon
 
 AI-powered procurement management dashboard built with React + FastAPI.
