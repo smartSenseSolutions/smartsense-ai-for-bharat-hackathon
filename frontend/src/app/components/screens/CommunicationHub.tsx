@@ -495,7 +495,7 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
           type: 'received',
         },
         {
-          id:3,
+          id: 3,
           from: 'procurement@hospital.com',
           fromName: 'You',
           to: 'service@biolabsolutions.de',
@@ -512,14 +512,14 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
   const filteredQueries = emailThreads.filter((query) => {
     // Apply status filter
     const matchesStatus = statusFilter === 'all' || query.status === statusFilter;
-    
+
     // Apply search filter
-    const matchesSearch = searchQuery === '' || 
+    const matchesSearch = searchQuery === '' ||
       query.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
       query.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       query.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       query.projectName.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     return matchesStatus && matchesSearch;
   });
 
@@ -541,7 +541,7 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
   return (
     <>
       <div className="min-h-screen bg-[#F5F5F5]">
-        <div className="bg-white rounded-2xl h-[calc(100vh-48px)] flex flex-col p-5">
+        <div className="bg-white rounded-2xl flex flex-col p-5 pb-20">
           {/* Header */}
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-gray-900 mb-1">Communications</h1>
@@ -561,31 +561,28 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
             <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1">
               <button
                 onClick={() => handleFilterChange('all')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  statusFilter === 'all'
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${statusFilter === 'all'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 All ({emailThreads.length})
               </button>
               <button
                 onClick={() => handleFilterChange('pending')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  statusFilter === 'pending'
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${statusFilter === 'pending'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 Unread ({emailThreads.filter(q => q.status === 'pending').length})
               </button>
               <button
                 onClick={() => handleFilterChange('responded')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  statusFilter === 'responded'
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${statusFilter === 'responded'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 Read ({emailThreads.filter(q => q.status === 'responded').length})
               </button>
@@ -595,7 +592,7 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
           {/* Gmail-style Email List */}
           <div className="border border-gray-200 rounded-lg overflow-hidden bg-white flex-1">
             {filteredQueries.length > 0 ? (
-              <div className="divide-y divide-gray-100 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="divide-y divide-gray-100">
                 {filteredQueries.map((query) => (
                   <button
                     key={query.id}
@@ -662,11 +659,11 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
       {emailThreadOpen && selectedQuery && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
           {/* Overlay */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setEmailThreadOpen(false)}
           />
-          
+
           {/* Side Panel */}
           <div className="absolute top-0 right-0 h-full w-[700px] bg-white shadow-lg flex flex-col" style={{ zIndex: 1 }}>
             {/* Header */}
@@ -689,9 +686,8 @@ export function CommunicationHub({ onNavigate }: CommunicationHubProps) {
                 <div key={message.id} className={`mb-6 ${index === selectedQuery.thread.length - 1 ? 'mb-0' : ''}`}>
                   {/* Message Header */}
                   <div className="flex items-start gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.type === 'sent' ? 'bg-[#3B82F6]' : 'bg-gray-300'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${message.type === 'sent' ? 'bg-[#3B82F6]' : 'bg-gray-300'
+                      }`}>
                       <span className={`text-sm font-medium ${message.type === 'sent' ? 'text-white' : 'text-gray-700'}`}>
                         {message.fromName.substring(0, 2).toUpperCase()}
                       </span>

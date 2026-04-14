@@ -675,7 +675,7 @@ export default function App() {
 
 
         <main
-          className={`flex-1 h-screen overflow-hidden transition-all duration-300 ${currentScreen === 'ai-rfp-creator'
+          className={`flex-1 min-h-screen overflow-y-auto transition-all duration-300 ${currentScreen === 'ai-rfp-creator'
             ? ''
             : currentScreen === 'ai-rfp-creator-centered'
               ? 'ml-[88px]'
@@ -684,7 +684,7 @@ export default function App() {
                 : 'ml-72 p-4'
             }`}
         >
-          <div className={`h-full ${currentScreen === 'ai-rfp-creator' || currentScreen === 'ai-rfp-creator-centered' ? '' : 'max-w-[980px] mx-auto'
+          <div className={`${['ai-rfp-creator', 'ai-rfp-creator-centered'].includes(currentScreen) ? '' : 'max-w-7xl mx-auto'
             }`}>
             {renderScreen()}
           </div>
