@@ -9,6 +9,7 @@ import { Input } from '@/app/components/ui/input';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { QuotationsPhaseGmail } from '@/app/components/screens/QuotationsPhaseGmail';
 import { ClosurePhase } from '@/app/components/screens/ClosurePhaseNew';
+import { RFPViewer } from '@/app/components/screens/RFPViewer';
 import { API_BASE } from '@/app/config';
 
 
@@ -59,6 +60,8 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
   });
   const [dealClosed, setDealClosed] = useState(false);
   const [closedDealData, setClosedDealData] = useState<any>(null);
+  const [showRFPViewer, setShowRFPViewer] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Persist phase tab to localStorage
   useEffect(() => {
@@ -116,6 +119,32 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
     onStatusChange?.('completed');
   };
 
+  const handleDownloadPDF = async () => {
+    if (!proposalKey) return;
+    setIsDownloading(true);
+    try {
+      const projectId = proposalKey.replace('RFP-', '');
+      const response = await fetch(`${API_BASE}/api/rfp/download/${projectId}`);
+      if (!response.ok) throw new Error('Failed to download PDF');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `RFP-${projectId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('RFP PDF downloaded successfully');
+    } catch (err) {
+      console.error('Download failed', err);
+      toast.error('Failed to download RFP PDF');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const phases = [
     { id: 'invite', label: 'Invite', icon: Users },
     { id: 'quotations', label: 'Quotations', icon: FileText },
@@ -136,15 +165,43 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
           <span className="text-sm font-medium">Back to Projects</span>
         </button>
 
-        <div className="mb-5">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">{proposal?.title}</h1>
-          <p className="text-sm text-gray-500">
-            Created: {proposal?.createdDate ? new Date(proposal.createdDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-          </p>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">{proposal?.title}</h1>
+            <p className="text-sm text-gray-500">
+              Created: {proposal?.createdDate ? new Date(proposal.createdDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 border-gray-200 text-gray-700 hover:bg-gray-50"
+              onClick={() => setShowRFPViewer(true)}
+            >
+              <FileText className="w-4 h-4 mr-2 text-blue-500" />
+              View RFP
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 border-gray-200 text-gray-700 hover:bg-gray-50"
+              onClick={handleDownloadPDF}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-2 text-green-600" />
+              )}
+              {isDownloading ? 'Downloading...' : 'Download PDF'}
+            </Button>
+          </div>
         </div>
 
         {/* Step Indicator */}
-        <div className="flex items-center justify-center max-w-5xl mx-auto">
+        <div className="flex items-center justify-center w-full">
           {phases.map((phase, index) => {
             const Icon = phase.icon;
             const isActive = phase.id === currentPhase;
@@ -191,8 +248,8 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
       </div>
 
       {/* Content */}
-      <div className="overflow-y-auto max-h-[calc(100vh-250px)] hide-scrollbar">
-        <div className="bg-white rounded-xl p-5">
+      <div className="pb-24">
+        <div className="bg-white rounded-xl p-0">
           {currentPhase === 'invite' && <InvitePhase proposal={proposal} onStatusChange={onStatusChange} readOnly={dealClosed}
             internalResults={internalResults} setInternalResults={setInternalResults}
             externalResults={externalResults} setExternalResults={setExternalResults}
@@ -208,6 +265,33 @@ export function ProposalDetails({ proposal, onBack, onNavigate, onStatusChange }
           {currentPhase === 'closure' && <ClosurePhase proposal={proposal} dealData={closedDealData} />}
         </div>
       </div>
+
+      {/* RFP Viewer Portal */}
+      <AnimatePresence>
+        {showRFPViewer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-10 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowRFPViewer(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-5xl h-full overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <RFPViewer
+                rfpData={proposal?.rfpData}
+                projectName={proposal?.title || proposal?.projectName}
+                onClose={() => setShowRFPViewer(false)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -701,7 +785,7 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
             </div>
           )}
 
-          <div className="overflow-y-auto hide-scrollbar pb-10" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+          <div className="pb-10">
             {submittedQuery && (
               <div className="mb-5">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">{submittedQuery}</h3>
@@ -916,7 +1000,7 @@ function InvitePhase({ proposal, onStatusChange, readOnly,
           </div>
         </div>
       ) : (
-        <div className="overflow-y-auto hide-scrollbar" style={{ maxHeight: 'calc(100vh - 320px)' }}>
+        <div className="pb-8">
           {isLoadingInvited ? (
             <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
               Loading invited vendors…
@@ -1558,7 +1642,7 @@ function QueriesPhase({ proposal }: { proposal: any }) {
         </div>
       </div>
 
-      <div className="flex gap-4 items-start" style={{ height: 'calc(100vh - 340px)' }}>
+      <div className="flex gap-4 items-start pb-12">
         {/* Queries List - Left Side */}
         <div className="w-1/3 border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-y-auto hide-scrollbar" style={{ maxHeight: '100%' }}>
           {filteredQueries.length > 0 ? (
@@ -2553,7 +2637,27 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (res.ok) setInsights(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setInsights(data);
+
+        // Sync negotiated price and price string back to the quotes list and selected quote
+        // This ensures the Deal Closure modal (which uses the quotes list) has latest data
+        if (data.price !== undefined || data.negotiated_price !== undefined) {
+          const updatedPrice = data.negotiated_price || data.price;
+
+          setQuotes(prev => prev.map(q =>
+            q.id === quote.id
+              ? { ...q, negotiated_price: updatedPrice, price_string: data.price_string || q.price_string }
+              : q
+          ));
+
+          setSelectedQuote(prev => prev && prev.id === quote.id
+            ? { ...prev, negotiated_price: updatedPrice, price_string: data.price_string || prev.price_string }
+            : prev
+          );
+        }
+      }
     } catch (err) {
       console.error('Insights error:', err);
     } finally {
@@ -2682,6 +2786,7 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
           vendor_email: closureVendor.sender_email,
           thread_id: closureVendor.thread_id || '',
           vendor_name: closureVendor.vendor_name || '',
+          negotiated_price_hint: closureVendor.negotiated_price,
         }),
       });
       const data = res.ok ? await res.json() : {};
@@ -2780,14 +2885,14 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-5 h-[calc(100vh-330px)]">
+        <div className="grid grid-cols-12 gap-5 min-h-[500px] mb-12">
           {/* Left Pane: Vendor List */}
-          <div className="col-span-3 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Negotiations</h3>
-              <p className="text-[10px] text-gray-500 mt-0.5">{quotes.length} active</p>
+          <div className="col-span-3 lg:col-span-2 border border-gray-200 rounded-xl bg-white overflow-hidden flex flex-col">
+            <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="text-[10px] font-bold text-gray-900 uppercase tracking-wider">Negotiations</h3>
+              <p className="text-[9px] text-gray-500 mt-0.5">{quotes.length} active</p>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+            <div className="flex-1 divide-y divide-gray-50">
               {quotes.map((q: any) => (
                 <button
                   key={q.id}
@@ -2809,7 +2914,7 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
           </div>
 
           {/* Right Pane */}
-          <div className="col-span-9 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
+          <div className="col-span-10 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
             {selectedQuote ? (
               <>
                 {/* Compact Header */}
@@ -2831,7 +2936,7 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
                   >
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-[10px] font-black text-gray-900 uppercase tracking-[0.15em]">AI Negotiation Insights</span>
+                      <span className="text-[11px] font-black text-gray-900 uppercase tracking-[0.2em] decoration-blue-500/30 decoration-2">AI Negotiation Insights</span>
                       {isInsightsLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
                     </div>
                     {insightsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
@@ -2910,15 +3015,15 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
                   )}
                 </div>
 
-                {/* Email Thread Area — Scrollable */}
-                <div className="flex-1 overflow-y-auto px-5 py-5 bg-gray-50/20">
+                {/* Email Thread Area */}
+                <div className="flex-1 px-5 py-5 bg-gray-50/20">
                   {isThreadLoading ? (
                     <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
                       <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
                       <span className="text-xs">Loading conversation...</span>
                     </div>
                   ) : threadMessages.length > 0 ? (
-                    <div className="space-y-5 max-w-3xl mx-auto">
+                    <div className="space-y-5 w-full">
                       {[...threadMessages].reverse().map((msg: any, idx: number) => {
                         const fromAddr = (msg.from ?? [])[0] ?? {};
                         const isVendor = fromAddr.email === selectedQuote.sender_email;
@@ -2992,7 +3097,7 @@ function NegotiationsPhase({ proposal, readOnly, onDealClosure }: {
                     </div>
                   ) : (
                     <div className="px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
-                      <div className="max-w-3xl mx-auto">
+                      <div className="max-w-5xl mx-auto">
                         <textarea
                           placeholder={`Reply to ${selectedQuote.vendor_name}…`}
                           value={replyText}

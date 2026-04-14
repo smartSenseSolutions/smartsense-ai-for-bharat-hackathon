@@ -486,8 +486,9 @@ async def generate_deal_closure_extract(
     vendor_email: str,
     thread_id: str,
     vendor_name: str,
-    db,
-    include_thread: bool = True,
+    db: Session,
+    include_thread: bool = False,
+    negotiated_price_hint: float = None,
 ) -> dict:
     """
     Extract final agreed deal terms directly from the database (Quote record).
@@ -537,9 +538,36 @@ async def generate_deal_closure_extract(
         all_quotes[0] if all_quotes else None,
     )
 
-    if quote and not vendor_email:
-        vendor_email = (quote.sla_details or {}).get("sender_email", "")
-        thread_id = (quote.sla_details or {}).get("thread_id", "")
+    if not quote:
+        return {"error": "No quote found for project"}
+
+    # Use existing data from DB if available
+    if negotiated_price_hint is not None:
+        quote.negotiated_price = float(negotiated_price_hint)
+        db.commit()
+
+    sla = quote.sla_details or {}
+    
+    # If we have a thread_id but no extracted terms yet, try to extract them now
+    if not sla.get("po_number") and sla.get("thread_id"):
+        from app.services.quotes import generate_negotiation_insights
+        try:
+            insights = await generate_negotiation_insights(
+                thread_id=sla.get("thread_id"),
+                vendor_name=vendor_name or sla.get("sender_name", ""),
+                vendor_email=vendor_email or sla.get("sender_email", ""),
+                project_id=project_id,
+                db=db
+            )
+            # generate_negotiation_insights already saves to DB, so refresh quote
+            db.refresh(quote)
+            sla = quote.sla_details or {}
+        except Exception as e:
+            print(f"[Deal Closure] Inline extraction error: {e}")
+
+    if not vendor_email:
+        vendor_email = sla.get("sender_email", "")
+        thread_id = sla.get("thread_id", "")
 
     vendor_email_base = (
         vendor_email.split("+")[0] + "@" + vendor_email.split("@")[1]
@@ -596,8 +624,8 @@ async def generate_deal_closure_extract(
             vendor_name = piv.vendor_name
         elif db_vendor and db_vendor.name:
             vendor_name = db_vendor.name
-        elif not vendor_name and quote:
-            vendor_name = (quote.sla_details or {}).get("sender_name", "")
+        elif not vendor_name:
+            vendor_name = sla.get("sender_name", "")
 
     # Build structured thread for frontend rendering
     email_thread = []
@@ -682,12 +710,24 @@ async def generate_deal_closure_extract(
         savings_pct = round((savings / original_price) * 100, 1)
 
     po_number = sla.get("po_number")
+    contract_number = sla.get("contract_number")
+    sla_updated = False
+
     if not po_number:
         po_number = f"PO-{''.join(random.choices(string.digits, k=6))}"
+        sla["po_number"] = po_number
+        sla_updated = True
 
-    contract_number = sla.get("contract_number")
     if not contract_number:
         contract_number = f"CN-{''.join(random.choices(string.digits, k=6))}"
+        sla["contract_number"] = contract_number
+        sla_updated = True
+
+    if sla_updated:
+        from sqlalchemy.orm.attributes import flag_modified
+        quote.sla_details = sla
+        flag_modified(quote, "sla_details")
+        db.commit()
 
     import re
 

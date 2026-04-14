@@ -1,10 +1,11 @@
-import { FileText, PiggyBank, TrendingUp, Sparkles, Clock } from 'lucide-react';
+import { FileText, Sparkles, Clock } from 'lucide-react';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 
 import type { Screen } from '@/app/App';
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/app/config';
+import { motion } from 'motion/react';
 
 
 interface DashboardProps {
@@ -103,10 +104,24 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
     return `${day}-${month}-${year}`;
   };
 
+  const formatIndianNumber = (num: number, isCurrency: boolean = false) => {
+    let result = '';
+    if (num >= 10000000) {
+      result = (num / 10000000).toFixed(1).replace(/\.0$/, '') + ' Cr';
+    } else if (num >= 100000) {
+      result = (num / 100000).toFixed(1).replace(/\.0$/, '') + ' Lac';
+    } else if (num >= 1000) {
+      result = (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    } else {
+      result = num.toString();
+    }
+    return isCurrency ? `₹${result}` : result;
+  };
+
   const metrics = [
-    { label: 'All RFPs', value: stats?.total_rfps_count?.toString() || '0', subtext: 'Overall', icon: FileText, color: 'text-blue-600 bg-blue-50', link: 'proposals-list' as Screen },
-    { label: 'Total Savings', value: stats?.total_savings ? stats.total_savings.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }) : '₹0', subtext: 'Overall', icon: PiggyBank, color: 'text-gray-600 bg-gray-50' },
-    { label: 'Active Vendors', value: stats?.active_vendors_count?.toString() || '0', subtext: 'Verified', icon: TrendingUp, color: 'text-blue-600 bg-blue-50' },
+    { label: 'All RFPs', value: formatIndianNumber(stats?.total_rfps_count || 0), subtext: 'Overall', image: '/document.gif', color: 'bg-[#Eff6ff]', link: 'proposals-list' as Screen },
+    { label: 'Total Savings', value: formatIndianNumber(stats?.total_savings || 0, true), subtext: 'Overall', image: '/money.gif', color: 'bg-[#fefce8]' },
+    { label: 'Active Vendors', value: formatIndianNumber(stats?.active_vendors_count || 0), subtext: 'Verified', image: '/search.gif', color: 'bg-[#Eff6ff]' },
   ];
 
   if (loading) {
@@ -118,9 +133,9 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
   }
 
   return (
-    <div className="h-screen overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-8">
+    <div className="px-8 pb-8">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white pt-8 pb-6 -mx-8 px-8 mb-4">
+      <div className="bg-white pt-8 pb-6 -mx-8 px-8 mb-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome, {userName || 'User'}!</h1>
@@ -135,23 +150,24 @@ export function Dashboard({ userName, onNavigate, onSearchClick }: DashboardProp
 
       <div className="pb-8">
         {/* Key Metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-3 gap-6 mb-10">
           {metrics.map((metric, index) => {
-            const Icon = metric.icon;
             return (
               <div
                 key={index}
-                className={`bg-white border border-[#eeeff1] rounded-xl p-6 transition-all ${metric.link ? 'cursor-pointer hover:border-blue-200 hover:shadow-sm' : ''}`}
+                className={`bg-white border border-[#eeeff1] rounded-2xl p-7 transition-all ${metric.link ? 'cursor-pointer hover:border-blue-200 hover:shadow-sm' : ''}`}
                 onClick={() => metric.link && onNavigate(metric.link)}
               >
-                <div className="flex items-start justify-between mb-5">
-                  <div className={`p-2.5 rounded-lg ${metric.color}`}>
-                    <Icon className="w-5 h-5" />
+                <div className="flex items-center gap-5">
+                  <div className={`p-4 rounded-2xl ${metric.color} flex-shrink-0 flex items-center justify-center`}>
+                    <img src={metric.image} alt={metric.label} className="w-16 h-16 object-contain" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[34px] font-bold text-gray-900 mb-0.5 leading-none">{metric.value}</h3>
+                    <p className="text-sm text-gray-900 font-bold mb-0.5">{metric.label}</p>
+                    <p className="text-xs text-gray-400 font-medium">{metric.subtext}</p>
                   </div>
                 </div>
-                <h3 className="text-3xl font-semibold text-gray-900 mb-2">{metric.value}</h3>
-                <p className="text-sm text-gray-900 font-medium mb-1">{metric.label}</p>
-                <p className="text-xs text-gray-500">{metric.subtext}</p>
               </div>
             );
           })}

@@ -201,7 +201,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
   ];
 
   const filteredQuotations = quotations.filter((quote) => {
-    return searchQuery === '' || 
+    return searchQuery === '' ||
       quote.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
       quote.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       quote.projectName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -233,7 +233,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
   return (
     <>
       <div className="min-h-screen bg-[#F5F5F5]">
-        <div className="bg-white rounded-2xl h-[calc(100vh-48px)] flex flex-col p-5">
+        <div className="bg-white rounded-2xl flex flex-col p-5 pb-20">
           {/* Header */}
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-gray-900 mb-1">Quotations Received</h1>
@@ -253,7 +253,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
           {/* Gmail-style Email List */}
           <div className="border border-gray-200 rounded-lg overflow-hidden bg-white flex-1">
             {filteredQuotations.length > 0 ? (
-              <div className="divide-y divide-gray-100 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="divide-y divide-gray-100">
                 {filteredQuotations.map((quote) => (
                   <div
                     key={quote.id}
@@ -271,7 +271,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
 
                       {/* Email Content */}
                       <div className="flex-1 min-w-0">
-                        <div 
+                        <div
                           onClick={() => handleEmailClick(quote)}
                           className="cursor-pointer"
                         >
@@ -317,7 +317,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
                             {quote.attachments.map((attachment: any, idx: number) => {
                               let IconComponent = FileText;
                               let iconColor = 'text-gray-500';
-                              
+
                               if (attachment.type === 'pdf') {
                                 iconColor = 'text-red-500';
                               } else if (attachment.type === 'excel') {
@@ -368,11 +368,11 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
       {emailThreadOpen && selectedQuotation && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
           {/* Overlay */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setEmailThreadOpen(false)}
           />
-          
+
           {/* Side Panel */}
           <div className="absolute top-0 right-0 h-full w-[700px] bg-white shadow-lg flex flex-col" style={{ zIndex: 1 }}>
             {/* Header */}
@@ -417,14 +417,14 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
                   <p className="text-sm text-gray-900 leading-relaxed mb-3">
                     <strong>Request for Quotation - {selectedQuotation.projectName}</strong>
                   </p>
-                  
+
                   {/* English Message - Always shown */}
                   <p className="text-sm text-gray-700 leading-relaxed">
                     Dear {selectedQuotation.vendor},<br /><br />
                     We are requesting quotations for {selectedQuotation.projectName}. Please review the attached specifications and provide your best quote including pricing, delivery timeline, and warranty terms.<br /><br />
                     Looking forward to your response.
                   </p>
-                  
+
                   {/* Original Language - Collapsible */}
                   {selectedQuotation.originalLanguage !== 'English' && (
                     <details className="text-xs mt-3">
@@ -502,7 +502,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
                   <p className="text-sm text-gray-700 leading-relaxed">
                     Thank you for your inquiry. Please find our quotation for {selectedQuotation.projectName}:
                   </p>
-                  
+
                   {/* Gmail-style Quotation Metrics - Inline */}
                   <div className="text-sm text-gray-900 leading-relaxed space-y-1">
                     <p><span className="font-semibold">Price:</span> {selectedQuotation.price ? `₹${selectedQuotation.price.toLocaleString()}` : 'N/A'}</p>
@@ -540,7 +540,7 @@ export function QuoteIntelligence({ onNavigate, onVendorSelect }: QuoteIntellige
                   <div className="text-sm text-gray-900 leading-relaxed">
                     {selectedQuotation.translatedMessage}
                   </div>
-                  
+
                   {/* Original Message (Collapsed) - Non-English */}
                   {selectedQuotation.originalLanguage !== 'English' && (
                     <details className="text-xs mt-3">

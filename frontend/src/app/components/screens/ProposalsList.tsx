@@ -98,16 +98,7 @@ export function ProposalsList({ projects = [], onNavigate, onCreateNew, onViewDe
   });
 
   return (
-    <div className="h-full overflow-y-auto pb-20 scrollbar-hide">
-      <style>{`
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}</style>
+    <div className="pb-8">
       <ProjectNameModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}

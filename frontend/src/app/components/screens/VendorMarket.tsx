@@ -387,7 +387,7 @@ export function VendorMarket({ onNavigate, onVendorSelect, onCreateRFP }: Vendor
           </div>
 
           {/* Results grid */}
-          <div className="max-w-[1400px] mx-auto max-h-[calc(100vh-300px)] overflow-y-auto pb-24 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="max-w-[1400px] mx-auto pb-12">
             <div className="space-y-8">
               {/* ── Internal (verified) results ── */}
               <div className="mb-8">

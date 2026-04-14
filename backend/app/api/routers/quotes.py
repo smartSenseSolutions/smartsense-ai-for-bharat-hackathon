@@ -473,6 +473,8 @@ class DealClosureExtractRequest(BaseModel):
     vendor_email: str
     thread_id: str = ""
     vendor_name: str = ""
+    include_thread: bool = False
+    negotiated_price_hint: float = None
 
 
 @router.post("/deal-closure-extract")
@@ -490,5 +492,7 @@ async def extract_deal_closure(
         thread_id=request.thread_id,
         vendor_name=request.vendor_name,
         db=db,
+        include_thread=request.include_thread,
+        negotiated_price_hint=request.negotiated_price_hint,
     )
     return data

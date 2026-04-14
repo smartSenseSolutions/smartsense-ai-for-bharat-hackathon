@@ -1064,11 +1064,10 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
         <div className="flex gap-2 mb-4 border-b border-gray-200">
           <button
             onClick={() => setActiveTab('voice')}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === 'voice'
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'voice'
                 ? 'text-gray-900'
                 : 'text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2">
               <Phone className="w-4 h-4" />
@@ -1080,11 +1079,10 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
           </button>
           <button
             onClick={() => setActiveTab('email')}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === 'email'
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${activeTab === 'email'
                 ? 'text-gray-900'
                 : 'text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2">
               <Mail className="w-4 h-4" />
@@ -1100,16 +1098,15 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
         {activeTab === 'voice' && (
           <div className="grid grid-cols-12 gap-4">
             {/* Calls List */}
-            <div className="col-span-4 space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="col-span-4 space-y-3">
               {negotiationCalls.map((call) => (
                 <button
                   key={call.id}
                   onClick={() => setSelectedCall(call)}
-                  className={`w-full text-left p-4 rounded-lg transition-all border ${
-                    selectedCall?.id === call.id
+                  className={`w-full text-left p-4 rounded-lg transition-all border ${selectedCall?.id === call.id
                       ? 'bg-white border-[#3B82F6] shadow-sm'
                       : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Phone className="w-4 h-4 text-gray-400" />
@@ -1117,11 +1114,10 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
                   </div>
                   <p className="text-xs text-gray-500 mb-2">{call.callDate} {call.callTime}</p>
                   <div className="flex items-center gap-2">
-                    <Badge className={`text-xs px-2 py-0.5 border-0 ${
-                      call.status === 'active'
+                    <Badge className={`text-xs px-2 py-0.5 border-0 ${call.status === 'active'
                         ? 'bg-orange-50 text-orange-700'
                         : 'bg-gray-100 text-gray-700'
-                    }`}>
+                      }`}>
                       {call.outcome}
                     </Badge>
                     <span className="text-xs text-gray-500">{call.duration}</span>
@@ -1131,7 +1127,7 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
             </div>
 
             {/* Call Details */}
-            <div className="col-span-8 border border-gray-200 rounded-lg bg-white max-h-[calc(100vh-200px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="col-span-8 border border-gray-200 rounded-lg bg-white">
               {/* Header */}
               <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                 <div className="flex items-start justify-between mb-3">
@@ -1197,7 +1193,7 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
         {activeTab === 'email' && (
           <>
             {/* Gmail-style Email List */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white max-h-[calc(100vh-200px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
               {emailThreads.length > 0 ? (
                 <div className="divide-y divide-gray-100">
                   {emailThreads.map((thread) => (
@@ -1268,11 +1264,11 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
             {emailThreadOpen && selectedEmailThread && createPortal(
               <div style={{ position: 'fixed', inset: 0, zIndex: 99999, isolation: 'isolate' }}>
                 {/* Overlay */}
-                <div 
+                <div
                   className="absolute inset-0 bg-black/50"
                   onClick={() => setEmailThreadOpen(false)}
                 />
-                
+
                 {/* Side Panel */}
                 <div className="absolute top-0 right-0 h-full w-[700px] bg-white shadow-lg flex flex-col" style={{ zIndex: 1 }}>
                   {/* Header */}
@@ -1295,9 +1291,8 @@ export function NegotiationHub({ onNavigate, selectedQuote }: NegotiationHubProp
                       <div key={message.id} className={`mb-6 ${index === selectedEmailThread.messages.length - 1 ? 'mb-0' : ''}`}>
                         {/* Message Header */}
                         <div className="flex items-start gap-3 mb-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            message.type === 'sent' ? 'bg-[#3B82F6]' : 'bg-gray-300'
-                          }`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${message.type === 'sent' ? 'bg-[#3B82F6]' : 'bg-gray-300'
+                            }`}>
                             <span className={`text-sm font-medium ${message.type === 'sent' ? 'text-white' : 'text-gray-700'}`}>
                               {message.fromName.substring(0, 2).toUpperCase()}
                             </span>
